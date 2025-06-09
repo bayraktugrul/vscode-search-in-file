@@ -36,13 +36,13 @@ export class TextSearcher {
                                 lineIndex, matchIndex + query.length
                             );
                             
-                            const contextBefore = this.getContextBefore(line, matchIndex);
-                            const contextAfter = this.getContextAfter(line, matchIndex + query.length);
+                            const highlightedLine = this.createHighlightedLine(line, matchIndex, query.length);
                             
+                            const fileType = this.getFileTypeIcon(fileName);
                             results.push({
-                                label: `${fileName}:${lineNumber}`,
-                                description: `$(search) ${relativePath}`,
-                                detail: `${contextBefore}${line.substring(matchIndex, matchIndex + query.length)}${contextAfter}`,
+                                label: `${fileType} ${fileName} $(symbol-numeric) ${lineNumber}`,
+                                description: `$(folder-opened) ${relativePath}`,
+                                detail: highlightedLine,
                                 type: SearchType.Text,
                                 uri: file,
                                 range: range,
@@ -64,26 +64,79 @@ export class TextSearcher {
         return this.sortAndLimitResults(results);
     }
 
-    private getContextBefore(lineText: string, startChar: number): string {
-        const contextStart = Math.max(0, startChar - 20);
-        let context = lineText.substring(contextStart, startChar);
-        
-        if (contextStart > 0) {
-            context = '...' + context;
+    private createHighlightedLine(line: string, matchIndex: number, matchLength: number): string {
+        const trimmedLine = line.trim();
+        if (trimmedLine.length === 0) {
+            return line;
         }
         
-        return context;
+        const lineStart = line.search(/\S/);
+        const adjustedMatchIndex = matchIndex - lineStart;
+        
+        if (adjustedMatchIndex < 0) {
+            return trimmedLine;
+        }
+        
+        const before = trimmedLine.substring(0, adjustedMatchIndex);
+        const match = trimmedLine.substring(adjustedMatchIndex, adjustedMatchIndex + matchLength);
+        const after = trimmedLine.substring(adjustedMatchIndex + matchLength);
+        
+        const maxLength = 80;
+        let result = before + '【' + match + '】' + after;
+        
+        if (result.length > maxLength) {
+            const halfMax = Math.floor(maxLength / 2);
+            const matchStart = before.length;
+            const matchEnd = matchStart + match.length + 2;
+            
+            let start = Math.max(0, matchStart - halfMax);
+            let end = Math.min(result.length, matchEnd + halfMax);
+            
+            result = result.substring(start, end);
+            if (start > 0) result = '...' + result;
+            if (end < before.length + match.length + 2 + after.length) result = result + '...';
+        }
+        
+        return result;
     }
 
-    private getContextAfter(lineText: string, endChar: number): string {
-        const contextEnd = Math.min(lineText.length, endChar + 20);
-        let context = lineText.substring(endChar, contextEnd);
+    private getFileTypeIcon(fileName: string): string {
+        const ext = path.extname(fileName).toLowerCase();
+        const iconMap: { [key: string]: string } = {
+            '.ts': '$(file-code)',
+            '.js': '$(file-code)',
+            '.tsx': '$(file-code)',
+            '.jsx': '$(file-code)',
+            '.py': '$(file-code)',
+            '.go': '$(file-code)',
+            '.java': '$(file-code)',
+            '.cpp': '$(file-code)',
+            '.c': '$(file-code)',
+            '.cs': '$(file-code)',
+            '.php': '$(file-code)',
+            '.rb': '$(file-code)',
+            '.rs': '$(file-code)',
+            '.swift': '$(file-code)',
+            '.kt': '$(file-code)',
+            '.dart': '$(file-code)',
+            '.html': '$(file-code)',
+            '.css': '$(file-css)',
+            '.scss': '$(file-css)',
+            '.json': '$(json)',
+            '.xml': '$(file-code)',
+            '.md': '$(file-text)',
+            '.txt': '$(file-text)',
+            '.yml': '$(file-code)',
+            '.yaml': '$(file-code)',
+            '.sql': '$(database)',
+            '.sh': '$(terminal)',
+            '.bat': '$(terminal)',
+            '.dockerfile': '$(file-code)',
+            '.gitignore': '$(file)',
+            '.env': '$(file)'
+        };
         
-        if (contextEnd < lineText.length) {
-            context = context + '...';
-        }
-        
-        return context;
+        return iconMap[ext] || '$(file)';
     }
 
     private calculateScore(query: string, lineText: string, range: vscode.Range): number {
