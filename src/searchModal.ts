@@ -119,11 +119,13 @@ export class SearchModal {
         try {
             const uri = vscode.Uri.file(filePath);
             const document = await vscode.workspace.openTextDocument(uri);
-            const editor = await vscode.window.showTextDocument(document);
+            const editor = await vscode.window.showTextDocument(document, { 
+                preview: false,
+                preserveFocus: false 
+            });
             const range = new vscode.Range(lineNumber - 1, 0, lineNumber - 1, 0);
             editor.selection = new vscode.Selection(range.start, range.end);
             editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-            this.panel.dispose();
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to open file: ${error}`);
         }
@@ -218,7 +220,7 @@ export class SearchModal {
                 }
                 
                 const html = results.map((result, index) => 
-                    '<div class="result-item ' + (index === 0 ? 'selected' : '') + '" onclick="selectResult(' + index + ')">' +
+                    '<div class="result-item ' + (index === 0 ? 'selected' : '') + '" onclick="selectResult(' + index + ')" ondblclick="openResult(' + index + ')">' +
                         '<span class="result-icon">📄</span>' +
                         '<div class="result-info">' +
                             '<div class="result-file">' + result.fileName + ':' + result.lineNumber + '</div>' +
@@ -235,6 +237,16 @@ export class SearchModal {
                 selectedIndex = index;
                 updateSelection();
                 selectFile(currentResults[index]);
+            }
+            
+            function openResult(index) {
+                if (currentResults[index]) {
+                    vscode.postMessage({
+                        type: 'openFile',
+                        filePath: currentResults[index].filePath,
+                        lineNumber: currentResults[index].lineNumber
+                    });
+                }
             }
             
             function renderPreview(data) {
@@ -284,6 +296,7 @@ export class SearchModal {
             }
             
             window.selectResult = selectResult;
+            window.openResult = openResult;
         `;
 
         return `<!DOCTYPE html>
@@ -344,6 +357,7 @@ export class SearchModal {
                     border-bottom: 1px solid var(--vscode-list-inactiveSelectionBackground);
                     display: flex;
                     align-items: center;
+                    user-select: none;
                 }
                 
                 .result-item:hover {
