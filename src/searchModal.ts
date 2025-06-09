@@ -142,6 +142,7 @@ export class SearchModal {
             let searchTimeout;
             let currentResults = [];
             let selectedIndex = 0;
+            searchInput.focus();
             
             searchInput.addEventListener('input', (e) => {
                 clearTimeout(searchTimeout);
