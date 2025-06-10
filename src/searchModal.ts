@@ -149,6 +149,14 @@ export class SearchModal {
             let selectedIndex = 0;
             searchInput.focus();
             
+            function autoResize() {
+                searchInput.style.height = 'auto';
+                searchInput.style.height = Math.min(searchInput.scrollHeight, 80) + 'px';
+            }
+            
+            searchInput.addEventListener('input', autoResize);
+            searchInput.addEventListener('paste', () => setTimeout(autoResize, 0));
+            
             searchInput.addEventListener('input', (e) => {
                 clearTimeout(searchTimeout);
                 const query = e.target.value;
@@ -180,6 +188,10 @@ export class SearchModal {
                     e.preventDefault();
                     navigateResults(-1);
                 } else if (e.key === 'Enter') {
+                    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                        // Allow new line with Shift+Enter, Ctrl+Enter, or Cmd+Enter
+                        return;
+                    }
                     e.preventDefault();
                     if (currentResults[selectedIndex]) {
                         openCurrentFile();
@@ -357,7 +369,7 @@ export class SearchModal {
                 }
                 
                 .search-container {
-                    padding: 16px;
+                    padding: 12px;
                     background: var(--vscode-sideBar-background);
                     border-bottom: 1px solid var(--vscode-panel-border);
                     position: relative;
@@ -372,7 +384,7 @@ export class SearchModal {
                 
                 .search-input {
                     width: 100%;
-                    padding: 8px 12px;
+                    padding: 6px 12px;
                     background: var(--vscode-input-background);
                     color: var(--vscode-input-foreground);
                     border: 1px solid var(--vscode-input-border);
@@ -380,6 +392,12 @@ export class SearchModal {
                     font-size: 13px;
                     font-weight: 400;
                     transition: all 0.2s ease;
+                    resize: vertical;
+                    min-height: 28px;
+                    max-height: 80px;
+                    overflow-y: auto;
+                    font-family: inherit;
+                    line-height: 1.3;
                 }
                 
                 .search-input:focus {
@@ -642,7 +660,7 @@ export class SearchModal {
         <body>
             <div class="search-container">
                 <div class="search-wrapper">
-                    <input type="text" class="search-input" placeholder="Search in files... (Press Escape to close)" autofocus>
+                    <textarea class="search-input" placeholder="Search in files... (Shift+Enter for new line, Enter to open, Esc to close)" autofocus rows="1"></textarea>
                     <div class="results-count"></div>
                 </div>
             </div>

@@ -20,37 +20,90 @@ export class TextSearcher {
                     const fileName = path.basename(file.fsPath);
                     const relativePath = vscode.workspace.asRelativePath(file);
                     
-                    const lines = text.split('\n');
-                    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-                        const line = lines[lineIndex];
-                        const lowerLine = line.toLowerCase();
-                        const lowerQuery = query.toLowerCase();
+                    // Check if query contains newlines (multi-line search)
+                    const isMultiLineQuery = query.includes('\n') || query.includes('\r\n') || query.includes('\r');
+                    
+                    if (isMultiLineQuery) {
+                        // Multi-line search
+                        const normalizedQuery = query.replace(/\r\n|\r|\n/g, '\n').toLowerCase();
+                        const normalizedText = text.replace(/\r\n|\r|\n/g, '\n').toLowerCase();
+                        const originalNormalizedText = text.replace(/\r\n|\r|\n/g, '\n');
                         
                         let searchIndex = 0;
-                        let matchIndex = lowerLine.indexOf(lowerQuery, searchIndex);
+                        let matchIndex = normalizedText.indexOf(normalizedQuery, searchIndex);
                         
                         while (matchIndex !== -1) {
-                            const lineNumber = lineIndex + 1;
+                            // Find the line number where the match starts
+                            const beforeMatch = originalNormalizedText.substring(0, matchIndex);
+                            const lineNumber = beforeMatch.split('\n').length;
+                            const lineStartIndex = beforeMatch.lastIndexOf('\n') + 1;
+                            const columnIndex = matchIndex - lineStartIndex;
+                            
+                            // Find where the match ends
+                            const matchEnd = matchIndex + normalizedQuery.length;
+                            const afterMatch = originalNormalizedText.substring(0, matchEnd);
+                            const endLineNumber = afterMatch.split('\n').length;
+                            const endLineStartIndex = afterMatch.lastIndexOf('\n') + 1;
+                            const endColumnIndex = matchEnd - endLineStartIndex;
+                            
                             const range = new vscode.Range(
-                                lineIndex, matchIndex,
-                                lineIndex, matchIndex + query.length
+                                lineNumber - 1, columnIndex,
+                                endLineNumber - 1, endColumnIndex
                             );
                             
-                            const highlightedLine = this.createHighlightedLine(line, matchIndex, query.length);
+                            // Get the context line for display (first line of match)
+                            const lines = originalNormalizedText.split('\n');
+                            const contextLine = lines[lineNumber - 1] || '';
+                            const highlightedLine = this.createHighlightedLine(contextLine, columnIndex, Math.min(query.replace(/\r\n|\r|\n/g, '\n').length, contextLine.length - columnIndex));
                             
                             const fileType = this.getFileTypeIcon(fileName);
                             results.push({
                                 label: `${fileType} ${fileName} $(symbol-numeric) ${lineNumber}`,
                                 description: `$(folder-opened) ${relativePath}`,
-                                detail: highlightedLine,
+                                detail: highlightedLine + ' (multi-line)',
                                 type: SearchType.Text,
                                 uri: file,
                                 range: range,
-                                score: this.calculateScore(query, line, range)
+                                score: this.calculateScore(query, contextLine, range) + 10 // Boost score for multi-line matches
                             });
                             
                             searchIndex = matchIndex + 1;
-                            matchIndex = lowerLine.indexOf(lowerQuery, searchIndex);
+                            matchIndex = normalizedText.indexOf(normalizedQuery, searchIndex);
+                        }
+                    } else {
+                        // Single-line search (original logic)
+                        const lines = text.split('\n');
+                        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+                            const line = lines[lineIndex];
+                            const lowerLine = line.toLowerCase();
+                            const lowerQuery = query.toLowerCase();
+                            
+                            let searchIndex = 0;
+                            let matchIndex = lowerLine.indexOf(lowerQuery, searchIndex);
+                            
+                            while (matchIndex !== -1) {
+                                const lineNumber = lineIndex + 1;
+                                const range = new vscode.Range(
+                                    lineIndex, matchIndex,
+                                    lineIndex, matchIndex + query.length
+                                );
+                                
+                                const highlightedLine = this.createHighlightedLine(line, matchIndex, query.length);
+                                
+                                const fileType = this.getFileTypeIcon(fileName);
+                                results.push({
+                                    label: `${fileType} ${fileName} $(symbol-numeric) ${lineNumber}`,
+                                    description: `$(folder-opened) ${relativePath}`,
+                                    detail: highlightedLine,
+                                    type: SearchType.Text,
+                                    uri: file,
+                                    range: range,
+                                    score: this.calculateScore(query, line, range)
+                                });
+                                
+                                searchIndex = matchIndex + 1;
+                                matchIndex = lowerLine.indexOf(lowerQuery, searchIndex);
+                            }
                         }
                     }
                 } catch (fileError) {
@@ -82,19 +135,19 @@ export class TextSearcher {
         const after = trimmedLine.substring(adjustedMatchIndex + matchLength);
         
         const maxLength = 80;
-        let result = before + '【' + match + '】' + after;
+        let result = before + match + after;
         
         if (result.length > maxLength) {
             const halfMax = Math.floor(maxLength / 2);
             const matchStart = before.length;
-            const matchEnd = matchStart + match.length + 2;
+            const matchEnd = matchStart + match.length;
             
             let start = Math.max(0, matchStart - halfMax);
             let end = Math.min(result.length, matchEnd + halfMax);
             
             result = result.substring(start, end);
             if (start > 0) result = '...' + result;
-            if (end < before.length + match.length + 2 + after.length) result = result + '...';
+            if (end < before.length + match.length + after.length) result = result + '...';
         }
         
         return result;
