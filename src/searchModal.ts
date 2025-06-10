@@ -227,14 +227,21 @@ export class SearchModal {
                 }, 100);
             });
             
+             document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    if (e.key === 'ArrowDown') {
+                        navigateResults(1);
+                    } else if (e.key === 'ArrowUp') {
+                        navigateResults(-1);
+                    }
+                }
+            }, true);
+            
             searchInput.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    navigateResults(1);
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    navigateResults(-1);
-                } else if (e.key === 'Enter') {
+                if (e.key === 'Enter') {
                     if (e.shiftKey || e.ctrlKey || e.metaKey) {
                         // Allow new line with Shift+Enter, Ctrl+Enter, or Cmd+Enter
                         return;
