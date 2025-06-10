@@ -8,6 +8,8 @@ export class SearchModal {
     private readonly searchProvider: SearchProvider;
     private disposables: vscode.Disposable[] = [];
     private currentResults: any[] = [];
+    private currentSearchId: number = 0;
+    private abortController: AbortController | null = null;
 
     public static createOrShow(context: vscode.ExtensionContext): SearchModal {
         if (SearchModal.currentModal) {
@@ -61,18 +63,33 @@ export class SearchModal {
     }
 
     private async performSearch(query: string): Promise<void> {
+        if (this.abortController) {
+            this.abortController.abort();
+        }
+        
+        const searchId = ++this.currentSearchId;
+        
         if (query.length < 2) {
             this.currentResults = [];
             this.panel.webview.postMessage({
                 type: 'searchResults',
                 results: [],
-                query: query
+                query: query,
+                searchId: searchId
             });
             return;
         }
 
+        this.abortController = new AbortController();
+
         try {
             const results = await this.searchProvider.search(query);
+            
+            // Check if this search is still the latest one
+            if (searchId !== this.currentSearchId) {
+                return; // Ignore outdated results
+            }
+            
             this.currentResults = results.map(r => ({
                 filePath: r.uri?.fsPath || '',
                 fileName: r.uri ? path.basename(r.uri.fsPath) : '',
@@ -85,7 +102,8 @@ export class SearchModal {
             this.panel.webview.postMessage({
                 type: 'searchResults',
                 results: this.currentResults,
-                query: query
+                query: query,
+                searchId: searchId
             });
 
             if (this.currentResults.length > 0) {
@@ -97,6 +115,16 @@ export class SearchModal {
             }
         } catch (error) {
             console.error('Search error:', error);
+            
+            // Check if this search is still the latest one
+            if (searchId === this.currentSearchId) {
+                this.panel.webview.postMessage({
+                    type: 'searchError',
+                    error: error instanceof Error ? error.message : 'Search failed',
+                    query: query,
+                    searchId: searchId
+                });
+            }
         }
     }
 
@@ -147,6 +175,8 @@ export class SearchModal {
             let searchTimeout;
             let currentResults = [];
             let selectedIndex = 0;
+            let currentSearchId = 0;
+            let isSearching = false;
             searchInput.focus();
             
             function autoResize() {
@@ -173,11 +203,16 @@ export class SearchModal {
                 }
                 
                 searchTimeout = setTimeout(() => {
-                    vscode.postMessage({
-                        type: 'search',
-                        query: query
-                    });
-                }, 300);
+                    if (!isSearching) {
+                        isSearching = true;
+                        currentSearchId++;
+                        vscode.postMessage({
+                            type: 'search',
+                            query: query,
+                            searchId: currentSearchId
+                        });
+                    }
+                }, 100);
             });
             
             searchInput.addEventListener('keydown', (e) => {
@@ -245,16 +280,34 @@ export class SearchModal {
                 const message = event.data;
                 
                 if (message.type === 'searchResults') {
-                    currentResults = message.results;
-                    selectedIndex = 0;
-                    renderResults(message.results, message.query);
-                    updateResultsCount(message.results.length);
+                    // Only process if this is the latest search
+                    if (!message.searchId || message.searchId >= currentSearchId) {
+                        currentResults = message.results;
+                        selectedIndex = 0;
+                        renderResults(message.results, message.query);
+                        updateResultsCount(message.results.length);
+                        isSearching = false;
+                    }
+                } else if (message.type === 'searchError') {
+                    // Only process if this is the latest search
+                    if (!message.searchId || message.searchId >= currentSearchId) {
+                        renderError(message.error);
+                        isSearching = false;
+                    }
                 } else if (message.type === 'filePreview') {
                     renderPreview(message);
                 }
             });
             
 
+            
+            function renderError(errorMessage) {
+                resultsContainer.innerHTML = \`<div class="empty-state">
+                    <div class="empty-text">Search Error</div>
+                    <div class="empty-subtext">\${errorMessage}</div>
+                </div>\`;
+                updateResultsCount(0);
+            }
             
             function renderResults(results, query) {
                 if (results.length === 0) {

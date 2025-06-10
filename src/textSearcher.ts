@@ -11,7 +11,7 @@ export class TextSearcher {
         }
 
         try {
-            const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 100);
+            const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 500);
             
             for (const file of files) {
                 try {
