@@ -316,6 +316,7 @@ export class SearchModal {
                     height: 100vh;
                     display: flex;
                     flex-direction: column;
+                    overflow: hidden;
                 }
                 
                 .search-container {
@@ -343,13 +344,14 @@ export class SearchModal {
                     display: flex;
                     flex-direction: column;
                     overflow: hidden;
+                    min-height: 0;
                 }
                 
                 .results-container {
-                    flex: 1;
+                    flex: 0 0 40%;
                     overflow-y: auto;
                     border-bottom: 1px solid var(--vscode-panel-border);
-                    max-height: 40%;
+                    min-height: 0;
                 }
                 
                 .result-item {
@@ -400,6 +402,7 @@ export class SearchModal {
                     display: flex;
                     flex-direction: column;
                     overflow: hidden;
+                    min-height: 0;
                 }
                 
                 .preview-header {
