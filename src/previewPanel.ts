@@ -15,7 +15,7 @@ export class PreviewPanel {
         }
 
         const panel = vscode.window.createWebviewPanel(
-            'jetbrainsSearchPreview',
+            'easySearchPreview',
             'Search Preview',
             column,
             {

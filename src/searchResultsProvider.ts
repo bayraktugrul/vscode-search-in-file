@@ -82,7 +82,7 @@ export class SearchResultItem extends vscode.TreeItem {
             this.iconPath = new vscode.ThemeIcon('search');
             this.contextValue = 'searchMatch';
             this.command = {
-                command: 'jetbrainsSearch.openMatch',
+                command: 'easySearch.openMatch',
                 title: 'Open Match',
                 arguments: [this.filePath, this.lineNumber]
             };

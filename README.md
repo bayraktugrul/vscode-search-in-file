@@ -1,62 +1,90 @@
-# JetBrains Find in Files for VS Code
+# EasySearch - Search in Files
 
-VS Code için JetBrains IDE'lerdeki "Find in Files" özelliğini taklit eden extension.
+Fast and powerful file search extension with JetBrains-like functionality. Search text across all files in your workspace with instant results and navigation.
 
-## Özellikler
+## Features
 
-- 🔍 Dosyalar içinde hızlı text arama
-- ⚡ Shift+F kısayolu ile instant açılım
-- 📝 Bulunan sonuçları context ile birlikte gösterim
-- 🎯 Doğrudan sonuç satırına atlama
-- 🚀 Performanslı arama algoritması
+- **Lightning Fast Search**: Optimized file indexing and search algorithms for instant results
+- **Smart Navigation**: Use arrow keys to navigate through search results
+- **Real-time Results**: See search results as you type with intelligent debouncing
+- **Performance Optimized**: 
+  - Batch processing for large codebases
+  - Memory-efficient file indexing with cleanup
+  - Automatic search cancellation to prevent freezing
+- **User-Friendly Interface**: Clean, intuitive search modal with highlighted matches
+- **Keyboard Shortcuts**: Quick access with `Shift+F` shortcut
+- **Multi-line Search Support**: Search across multiple lines in files
+- **Safe Search**: Handles special characters and regex patterns safely
 
-## Kullanım
+## Installation
 
-1. **Shift+F** tuşlarına basın
-2. Aranacak metni yazın (en az 2 karakter)
-3. Sonuçlardan birine tıklayın
-4. Dosya açılır ve bulunan metin seçili halde gösterilir
+1. Open Visual Studio Code
+2. Go to Extensions (Ctrl+Shift+X)
+3. Search for "EasySearch - Search in Files"
+4. Click Install
 
-## Kurulum
+## Usage
 
-### Development (Geliştirme)
+### Quick Start
 
-```bash
-# Bağımlılıkları yükle
-npm install
+1. Press `Shift+F` to open the search modal
+2. Type your search query
+3. Use arrow keys (↑/↓) to navigate through results
+4. Press `Enter` to open the selected file
+5. Press `Escape` to close the search modal
 
-# Kodu compile et
-npm run compile
+### Commands
 
-# VS Code'da F5'e basarak debug modunda çalıştır
-```
+- **EasySearch: Find in Files** - Opens the search interface
 
-### Extension Olarak Paketleme
+### Keyboard Shortcuts
 
-```bash
-# vsce paketleyicisini global olarak yükle
-npm install -g vsce
+- `Shift+F` - Open search modal
+- `↑/↓` Arrow keys - Navigate search results
+- `Enter` - Open selected file at the matching line
+- `Escape` - Close search modal
 
-# Extension paketini oluştur
-vsce package
+## Performance Features
 
-# Oluşan .vsix dosyasını VS Code'a yükle
-```
+- **File Indexing**: Intelligent caching system to avoid re-reading unchanged files
+- **Batch Processing**: Processes files in batches of 20 for optimal performance
+- **Memory Management**: Automatic cleanup of old index entries every 5 minutes
+- **Search Cancellation**: Cancels previous searches when starting new ones
+- **Size Limits**: Respects file size limits (512KB max) and total index limits (5000 files max)
 
-## Teknik Detaylar
+## Requirements
 
-- **Dil:** TypeScript
-- **VS Code API Version:** ^1.74.0
-- **Arama Kapsamı:** Workspace içindeki tüm dosyalar (node_modules hariç)
-- **Desteklenen Dosya Tipleri:** Tüm text dosyaları
+- Visual Studio Code 1.74.0 or higher
+- Node.js (for development)
 
-## Katkıda Bulunma
+## Extension Settings
 
-1. Repository'yi fork edin
-2. Feature branch oluşturun
-3. Değişikliklerinizi commit edin
-4. Pull request gönderin
+This extension doesn't require any configuration - it works out of the box!
 
-## Lisans
+## Known Issues
 
-MIT License 
+None currently. If you encounter any issues, please report them in the repository.
+
+## Release Notes
+
+### 1.0.0
+
+Initial release of EasySearch - Search in Files
+
+- Fast file search with JetBrains-like functionality
+- Optimized performance with file indexing
+- Memory-efficient batch processing
+- Safe handling of special characters
+- Intuitive keyboard navigation
+
+## Contributing
+
+This is an open source project. Contributions are welcome.
+
+## License
+
+MIT License
+
+---
+
+**Enjoy fast and efficient file searching with EasySearch!** 

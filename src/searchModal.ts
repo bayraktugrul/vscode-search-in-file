@@ -22,7 +22,7 @@ export class SearchModal {
         }
 
         const panel = vscode.window.createWebviewPanel(
-            'jetbrainsSearchModal',
+            'easySearchModal',
             'Find in Files',
             vscode.ViewColumn.One,
             {

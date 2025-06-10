@@ -1,28 +1,58 @@
 {
-  "name": "jetbrains-search",
-  "displayName": "JetBrains Find in Files",
-  "description": "Find text in files functionality similar to JetBrains IDEs",
+  "name": "easysearch-search-in-files",
+  "displayName": "EasySearch - Search in Files",
+  "description": "Fast and powerful search in files extension with JetBrains-like functionality. Search text across all files in your workspace with instant results and navigation.",
   "version": "1.0.0",
+  "publisher": "bayraktugrul",
+  "author": {
+    "name": "bayraktugrul"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "icon": "images/icon.png",
+  "keywords": [
+    "search",
+    "find",
+    "files",
+    "text search",
+    "jetbrains",
+    "grep",
+    "ripgrep",
+    "search in files",
+    "file search",
+    "workspace search"
+  ],
   "engines": {
     "vscode": "^1.74.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Snippets",
+    "Keymaps"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "jetbrainsSearch.searchEverywhere",
-        "title": "Find in Files"
-      }
+              {
+          "command": "easySearch.searchInFiles",
+          "title": "EasySearch - Search in Files",
+          "category": "EasySearch"
+        }
     ],
     "keybindings": [
-      {
-        "command": "jetbrainsSearch.searchEverywhere",
-        "key": "shift+f"
-      }
+              {
+          "command": "easySearch.searchInFiles",
+          "key": "shift+f",
+          "mac": "shift+f"
+        }
     ]
   },
   "scripts": {
