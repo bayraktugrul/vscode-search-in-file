@@ -72,6 +72,7 @@ export class SearchModal {
         }
         
         const searchId = ++this.currentSearchId;
+        this.abortController = new AbortController();
         
         if (query.length < 2) {
             this.currentResults = [];
@@ -87,10 +88,8 @@ export class SearchModal {
             return;
         }
 
-        this.abortController = new AbortController();
-
         try {
-            const results = await this.searchProvider.search(query);
+            const results = await this.searchProvider.search(query, this.abortController.signal);
             
             // Check if this search is still the latest one
             if (searchId !== this.currentSearchId) {
@@ -237,7 +236,7 @@ export class SearchModal {
                             searchId: currentSearchId
                         });
                     }
-                }, 100);
+                }, 300);
             });
             
              document.addEventListener('keydown', (e) => {
@@ -433,13 +432,29 @@ export class SearchModal {
                 const escapedText = escapeHtml(text);
                 const escapedQuery = escapeHtml(query);
                 
-                const parts = escapedText.split(new RegExp('(' + escapedQuery + ')', 'gi'));
-                return parts.map(part => {
-                    if (part.toLowerCase() === escapedQuery.toLowerCase()) {
-                        return '<span class="search-highlight">' + part + '</span>';
-                    }
-                    return part;
-                }).join('');
+                // Use indexOf for safe string matching instead of regex
+                const lowerText = escapedText.toLowerCase();
+                const lowerQuery = escapedQuery.toLowerCase();
+                
+                let result = '';
+                let currentIndex = 0;
+                let foundIndex = lowerText.indexOf(lowerQuery, currentIndex);
+                
+                while (foundIndex !== -1) {
+                    // Add text before match
+                    result += escapedText.substring(currentIndex, foundIndex);
+                    // Add highlighted match
+                    const matchText = escapedText.substring(foundIndex, foundIndex + escapedQuery.length);
+                    result += '<span class="search-highlight">' + matchText + '</span>';
+                    
+                    currentIndex = foundIndex + escapedQuery.length;
+                    foundIndex = lowerText.indexOf(lowerQuery, currentIndex);
+                }
+                
+                // Add remaining text
+                result += escapedText.substring(currentIndex);
+                
+                return result;
             }
             
             function escapeHtml(text) {

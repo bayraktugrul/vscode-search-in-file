@@ -9,8 +9,8 @@ export class SearchProvider {
         this.textSearcher = new TextSearcher();
     }
 
-    async search(query: string): Promise<SearchResult[]> {
-        return await this.textSearcher.search(query);
+    async search(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
+        return await this.textSearcher.search(query, signal);
     }
 
 
