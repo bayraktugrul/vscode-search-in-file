@@ -160,7 +160,7 @@ export class PreviewPanel {
                 ${highlightLine ? `
                     const currentLine = document.querySelector('[data-line="${highlightLine}"]');
                     if (currentLine) {
-                        currentLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        currentLine.scrollIntoView({ behavior: 'auto', block: 'center' });
                     }
                 ` : ''}
             </script>

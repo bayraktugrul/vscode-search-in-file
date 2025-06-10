@@ -203,7 +203,7 @@ export class SearchModal {
             
             // Try focusing immediately and with delays to ensure it works
             focusSearchInput();
-            focusTimeouts.push(setTimeout(focusSearchInput, 100));
+            focusTimeouts.push(setTimeout(focusSearchInput, 50));
             
             function autoResize() {
                 searchInput.style.height = 'auto';
@@ -238,7 +238,7 @@ export class SearchModal {
                             searchId: currentSearchId
                         });
                     }
-                }, 300);
+                }, 150);
             });
             
              document.addEventListener('keydown', (e) => {
@@ -286,7 +286,7 @@ export class SearchModal {
                 const selectedItem = document.querySelector('.result-item.selected');
                 if (selectedItem) {
                     selectedItem.scrollIntoView({
-                        behavior: 'smooth',
+                        behavior: 'auto',
                         block: 'nearest',
                         inline: 'nearest'
                     });
@@ -429,12 +429,10 @@ export class SearchModal {
                 
                 previewContent.innerHTML = html;
                 
-                setTimeout(() => {
-                    const highlightLine = previewContent.querySelector('.highlight');
-                    if (highlightLine) {
-                        highlightLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                }, 100);
+                const highlightLine = previewContent.querySelector('.highlight');
+                if (highlightLine) {
+                    highlightLine.scrollIntoView({ behavior: 'auto', block: 'center' });
+                }
             }
             
             function highlightText(text, query) {
