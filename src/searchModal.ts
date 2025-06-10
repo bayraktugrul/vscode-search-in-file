@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { SearchProvider } from './searchProvider';
 
 export class SearchModal {
@@ -47,6 +48,9 @@ export class SearchModal {
                     case 'openFile':
                         await this.openFile(message.filePath, message.lineNumber);
                         break;
+                    case 'close':
+                        this.panel.dispose();
+                        break;
                 }
             },
             undefined,
@@ -71,7 +75,7 @@ export class SearchModal {
             const results = await this.searchProvider.search(query);
             this.currentResults = results.map(r => ({
                 filePath: r.uri?.fsPath || '',
-                fileName: r.uri ? require('path').basename(r.uri.fsPath) : '',
+                fileName: r.uri ? path.basename(r.uri.fsPath) : '',
                 relativePath: r.uri ? vscode.workspace.asRelativePath(r.uri) : '',
                 lineNumber: r.range ? r.range.start.line + 1 : 1,
                 lineText: r.detail || '',
@@ -106,7 +110,7 @@ export class SearchModal {
                 type: 'filePreview',
                 content: content,
                 filePath: filePath,
-                fileName: require('path').basename(filePath),
+                fileName: path.basename(filePath),
                 lineNumber: lineNumber,
                 query: query
             });
@@ -138,6 +142,7 @@ export class SearchModal {
             const resultsContainer = document.querySelector('.results-container');
             const previewHeader = document.querySelector('.preview-header');
             const previewContent = document.querySelector('.preview-content');
+            const resultsCount = document.querySelector('.results-count');
             
             let searchTimeout;
             let currentResults = [];
@@ -146,10 +151,23 @@ export class SearchModal {
             
             searchInput.addEventListener('input', (e) => {
                 clearTimeout(searchTimeout);
+                const query = e.target.value;
+                
+                if (query.length === 0) {
+                    resultsContainer.innerHTML = '<div class="empty-state"><div class="empty-text">Start typing to search...</div></div>';
+                    updateResultsCount(0);
+                } else if (query.length < 2) {
+                    resultsContainer.innerHTML = '<div class="empty-state"><div class="empty-text">Type at least 2 characters...</div></div>';
+                    updateResultsCount(0);
+                } else {
+                    resultsContainer.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><div class="loading-text">Searching...</div></div>';
+                    updateResultsCount(0);
+                }
+                
                 searchTimeout = setTimeout(() => {
                     vscode.postMessage({
                         type: 'search',
-                        query: e.target.value
+                        query: query
                     });
                 }, 300);
             });
@@ -166,6 +184,9 @@ export class SearchModal {
                     if (currentResults[selectedIndex]) {
                         openCurrentFile();
                     }
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    vscode.postMessage({ type: 'close' });
                 }
             });
             
@@ -181,6 +202,12 @@ export class SearchModal {
                 document.querySelectorAll('.result-item').forEach((item, index) => {
                     item.classList.toggle('selected', index === selectedIndex);
                 });
+            }
+            
+            function updateResultsCount(count) {
+                if (resultsCount) {
+                    resultsCount.textContent = count > 0 ? \`\${count} result\${count === 1 ? '' : 's'}\` : '';
+                }
             }
             
             function selectFile(result) {
@@ -209,27 +236,30 @@ export class SearchModal {
                     currentResults = message.results;
                     selectedIndex = 0;
                     renderResults(message.results, message.query);
+                    updateResultsCount(message.results.length);
                 } else if (message.type === 'filePreview') {
                     renderPreview(message);
                 }
             });
             
+
+            
             function renderResults(results, query) {
                 if (results.length === 0) {
-                    resultsContainer.innerHTML = '<div class="empty-state">No results found</div>';
+                    resultsContainer.innerHTML = '<div class="empty-state"><div class="empty-text">No results found</div><div class="empty-subtext">Try a different search term</div></div>';
                     return;
                 }
                 
-                const html = results.map((result, index) => 
-                    '<div class="result-item ' + (index === 0 ? 'selected' : '') + '" onclick="selectResult(' + index + ')" ondblclick="openResult(' + index + ')">' +
-                        '<span class="result-icon">📄</span>' +
-                        '<div class="result-info">' +
-                            '<div class="result-file">' + result.fileName + ':' + result.lineNumber + '</div>' +
-                            '<div class="result-path">' + result.relativePath + '</div>' +
-                            '<div class="result-line">' + highlightText(result.lineText, query) + '</div>' +
-                        '</div>' +
-                    '</div>'
-                ).join('');
+                                 const html = results.map((result, index) => {
+                     return \`<div class="result-item \${index === 0 ? 'selected' : ''}" onclick="selectResult(\${index})" ondblclick="openResult(\${index})">
+                         <div class="result-content">
+                             <div class="result-line">\${highlightText(result.lineText.trim(), query)}</div>
+                         </div>
+                         <div class="result-file-info">
+                             <div class="result-file">\${result.fileName}:\${result.lineNumber}</div>
+                         </div>
+                     </div>\`;
+                 }).join('');
                 
                 resultsContainer.innerHTML = html;
             }
@@ -251,7 +281,14 @@ export class SearchModal {
             }
             
             function renderPreview(data) {
-                previewHeader.textContent = data.fileName;
+                                 previewHeader.innerHTML = \`
+                     <div class="preview-file-info">
+                         <div class="preview-file-name">
+                             \${data.fileName}
+                         </div>
+                         <div class="preview-file-path">\${vscode.workspace?.asRelativePath(data.filePath) || data.filePath}</div>
+                     </div>
+                 \`;
                 
                 const lines = data.content.split('\\n');
                 const html = lines.map((line, index) => {
@@ -259,10 +296,10 @@ export class SearchModal {
                     const isHighlight = lineNumber === data.lineNumber;
                     const highlightedLine = highlightText(line, data.query);
                     
-                    return '<div class="code-line ' + (isHighlight ? 'highlight' : '') + '" data-line="' + lineNumber + '">' +
-                        '<span class="line-number">' + lineNumber + '</span>' +
-                        '<span class="line-content">' + highlightedLine + '</span>' +
-                    '</div>';
+                    return \`<div class="code-line \${isHighlight ? 'highlight' : ''}" data-line="\${lineNumber}">
+                        <span class="line-number">\${lineNumber}</span>
+                        <span class="line-content">\${highlightedLine}</span>
+                    </div>\`;
                 }).join('');
                 
                 previewContent.innerHTML = html;
@@ -310,8 +347,8 @@ export class SearchModal {
                 body {
                     margin: 0;
                     padding: 0;
-                    font-family: var(--vscode-font-family);
-                    background-color: var(--vscode-editor-background);
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+                    background: var(--vscode-editor-background);
                     color: var(--vscode-editor-foreground);
                     height: 100vh;
                     display: flex;
@@ -320,23 +357,47 @@ export class SearchModal {
                 }
                 
                 .search-container {
-                    padding: 10px;
+                    padding: 16px;
+                    background: var(--vscode-sideBar-background);
                     border-bottom: 1px solid var(--vscode-panel-border);
+                    position: relative;
+                }
+                
+                .search-wrapper {
+                    position: relative;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
                 }
                 
                 .search-input {
                     width: 100%;
-                    padding: 8px;
-                    background-color: var(--vscode-input-background);
+                    padding: 8px 12px;
+                    background: var(--vscode-input-background);
                     color: var(--vscode-input-foreground);
                     border: 1px solid var(--vscode-input-border);
-                    border-radius: 3px;
+                    border-radius: 4px;
                     font-size: 13px;
+                    font-weight: 400;
+                    transition: all 0.2s ease;
                 }
                 
                 .search-input:focus {
                     outline: none;
                     border-color: var(--vscode-focusBorder);
+                }
+                
+                .search-input::placeholder {
+                    color: var(--vscode-input-placeholderForeground);
+                    opacity: 0.7;
+                }
+                
+                .results-count {
+                    color: var(--vscode-descriptionForeground);
+                    font-size: 12px;
+                    font-weight: 500;
+                    white-space: nowrap;
+                    opacity: 0.8;
                 }
                 
                 .content-container {
@@ -348,10 +409,11 @@ export class SearchModal {
                 }
                 
                 .results-container {
-                    flex: 0 0 40%;
+                    flex: 0 0 45%;
                     overflow-y: auto;
                     border-bottom: 1px solid var(--vscode-panel-border);
                     min-height: 0;
+                    background: var(--vscode-sideBar-background);
                 }
                 
                 .result-item {
@@ -360,41 +422,52 @@ export class SearchModal {
                     border-bottom: 1px solid var(--vscode-list-inactiveSelectionBackground);
                     display: flex;
                     align-items: center;
+                    justify-content: space-between;
                     user-select: none;
+                    transition: all 0.15s ease;
+                    position: relative;
+                    min-height: 28px;
                 }
                 
                 .result-item:hover {
-                    background-color: var(--vscode-list-hoverBackground);
+                    background: var(--vscode-list-hoverBackground);
+                    transform: translateX(2px);
                 }
                 
                 .result-item.selected {
-                    background-color: var(--vscode-list-activeSelectionBackground);
+                    background: var(--vscode-list-activeSelectionBackground);
                     color: var(--vscode-list-activeSelectionForeground);
+                    border-left: 3px solid var(--vscode-textLink-foreground);
+                    box-shadow: inset 0 0 10px rgba(0, 122, 255, 0.1);
                 }
                 
-                .result-icon {
-                    margin-right: 8px;
-                    opacity: 0.7;
-                }
-                
-                .result-info {
+                .result-content {
                     flex: 1;
-                }
-                
-                .result-file {
-                    font-weight: 500;
-                    margin-bottom: 2px;
-                }
-                
-                .result-path {
-                    font-size: 11px;
-                    opacity: 0.7;
+                    min-width: 0;
+                    margin-right: 12px;
                 }
                 
                 .result-line {
                     font-size: 11px;
-                    opacity: 0.8;
-                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
+                    color: var(--vscode-editor-foreground);
+                    line-height: 1.3;
+                    word-break: break-word;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                
+                .result-file-info {
+                    flex-shrink: 0;
+                    text-align: right;
+                }
+                
+                .result-file {
+                    font-size: 11px;
+                    color: var(--vscode-descriptionForeground);
+                    font-weight: 500;
+                    opacity: 0.9;
                 }
                 
                 .preview-container {
@@ -403,85 +476,195 @@ export class SearchModal {
                     flex-direction: column;
                     overflow: hidden;
                     min-height: 0;
+                    background: var(--vscode-editor-background);
                 }
                 
                 .preview-header {
-                    padding: 8px 12px;
-                    background-color: var(--vscode-editorGroupHeader-tabsBackground);
+                    padding: 12px 16px;
+                    background: var(--vscode-editorGroupHeader-tabsBackground);
                     border-bottom: 1px solid var(--vscode-panel-border);
-                    font-size: 12px;
+                    font-size: 13px;
+                }
+                
+                .preview-file-info {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+                
+                .preview-file-name {
+                    font-weight: 600;
+                    color: var(--vscode-textLink-foreground);
+                }
+                
+                .preview-file-path {
+                    font-size: 11px;
+                    color: var(--vscode-descriptionForeground);
+                    opacity: 0.8;
                 }
                 
                 .preview-content {
                     flex: 1;
                     overflow: auto;
                     padding: 0;
-                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-                    font-size: 12px;
-                    line-height: 1.4;
+                    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
+                    font-size: 13px;
+                    line-height: 1.5;
+                    background: var(--vscode-editor-background);
                 }
                 
                 .code-line {
                     display: flex;
-                    min-height: 18px;
-                    padding: 0 8px;
+                    min-height: 20px;
+                    padding: 0 16px;
+                    align-items: flex-start;
+                    transition: background-color 0.15s ease;
                 }
                 
                 .code-line:hover {
-                    background-color: var(--vscode-list-hoverBackground);
+                    background: var(--vscode-list-hoverBackground);
                 }
                 
                 .code-line.highlight {
-                    background-color: var(--vscode-editor-lineHighlightBackground);
+                    background: var(--vscode-editor-lineHighlightBackground);
                     border-left: 3px solid var(--vscode-textLink-foreground);
+                    box-shadow: inset 0 0 10px rgba(0, 122, 255, 0.1);
                 }
                 
                 .line-number {
                     color: var(--vscode-editorLineNumber-foreground);
-                    min-width: 50px;
+                    min-width: 60px;
                     text-align: right;
-                    padding-right: 12px;
+                    padding-right: 16px;
                     user-select: none;
                     flex-shrink: 0;
+                    font-weight: 400;
+                    opacity: 0.7;
                 }
                 
                 .line-content {
                     flex: 1;
                     white-space: pre;
                     overflow-x: auto;
+                    padding-top: 1px;
                 }
                 
                 .search-highlight {
-                    background-color: var(--vscode-editor-findMatchHighlightBackground);
+                    background: var(--vscode-editor-findMatchHighlightBackground);
                     color: var(--vscode-editor-findMatchForeground);
                     border-radius: 2px;
-                    padding: 1px;
+                    padding: 1px 2px;
+                    font-weight: 500;
                 }
                 
-                .empty-state {
+                .empty-state, .loading-state {
                     display: flex;
+                    flex-direction: column;
                     align-items: center;
                     justify-content: center;
                     height: 100%;
+                    padding: 20px;
+                    text-align: center;
+                    gap: 8px;
+                }
+                
+                .empty-text {
                     color: var(--vscode-descriptionForeground);
-                    font-style: italic;
+                    font-size: 13px;
+                    font-weight: 500;
+                }
+                
+                .empty-subtext {
+                    color: var(--vscode-descriptionForeground);
+                    font-size: 11px;
+                    opacity: 0.7;
+                }
+                
+                .loading-spinner {
+                    width: 32px;
+                    height: 32px;
+                    border: 3px solid var(--vscode-panel-border);
+                    border-top: 3px solid var(--vscode-textLink-foreground);
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                    margin-bottom: 8px;
+                }
+                
+                .loading-text {
+                    color: var(--vscode-descriptionForeground);
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+                
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                
+                ::-webkit-scrollbar {
+                    width: 8px;
+                    height: 8px;
+                }
+                
+                ::-webkit-scrollbar-track {
+                    background: var(--vscode-scrollbarSlider-background);
+                }
+                
+                ::-webkit-scrollbar-thumb {
+                    background: var(--vscode-scrollbarSlider-background);
+                    border-radius: 4px;
+                }
+                
+                ::-webkit-scrollbar-thumb:hover {
+                    background: var(--vscode-scrollbarSlider-hoverBackground);
+                }
+                
+                @media (max-width: 768px) {
+                    .search-container {
+                        padding: 12px;
+                    }
+                    
+                    .search-input {
+                        padding: 10px 10px 10px 36px;
+                        font-size: 16px;
+                    }
+                    
+                    .results-container {
+                        flex: 0 0 50%;
+                    }
+                    
+                    .result-item {
+                        padding: 10px 12px;
+                    }
                 }
             </style>
         </head>
         <body>
             <div class="search-container">
-                <input type="text" class="search-input" placeholder="Type to search in files..." autofocus>
+                <div class="search-wrapper">
+                    <input type="text" class="search-input" placeholder="Search in files... (Press Escape to close)" autofocus>
+                    <div class="results-count"></div>
+                </div>
             </div>
             
             <div class="content-container">
                 <div class="results-container">
-                    <div class="empty-state">Start typing to search...</div>
+                    <div class="empty-state">
+                        <div class="empty-text">Start typing to search...</div>
+                    </div>
                 </div>
                 
                 <div class="preview-container">
-                    <div class="preview-header">Select a file to preview</div>
+                    <div class="preview-header">
+                        <div class="preview-file-info">
+                            <div class="preview-file-name">Select a file to preview</div>
+                        </div>
+                    </div>
                     <div class="preview-content">
-                        <div class="empty-state">No preview available</div>
+                        <div class="empty-state">
+                            <div class="empty-text">No preview available</div>
+                            <div class="empty-subtext">Click on a search result to preview</div>
+                        </div>
                     </div>
                 </div>
             </div>
