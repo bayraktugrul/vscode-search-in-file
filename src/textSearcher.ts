@@ -193,11 +193,10 @@ export class TextSearcher {
                 );
                 
                 const highlightedLine = this.createHighlightedLine(line, matchIndex, query.length);
-                const fileType = this.getFileTypeIcon(fileIndex.fileName);
                 
                 results.push({
-                    label: `${fileType} ${fileIndex.fileName} $(symbol-numeric) ${lineNumber}`,
-                    description: `$(folder-opened) ${fileIndex.relativePath}`,
+                    label: `${fileIndex.fileName}:${lineNumber}`,
+                    description: fileIndex.relativePath,
                     detail: highlightedLine,
                     type: SearchType.Text,
                     uri: fileIndex.uri,
@@ -240,11 +239,10 @@ export class TextSearcher {
             const lines = originalNormalizedText.split('\n');
             const contextLine = lines[lineNumber - 1] || '';
             const highlightedLine = this.createHighlightedLine(contextLine, columnIndex, Math.min(query.replace(/\r\n|\r|\n/g, '\n').length, contextLine.length - columnIndex));
-            const fileType = this.getFileTypeIcon(fileIndex.fileName);
             
             results.push({
-                label: `${fileType} ${fileIndex.fileName} $(symbol-numeric) ${lineNumber}`,
-                description: `$(folder-opened) ${fileIndex.relativePath}`,
+                label: `${fileIndex.fileName}:${lineNumber}`,
+                description: fileIndex.relativePath,
                 detail: highlightedLine + ' (multi-line)',
                 type: SearchType.Text,
                 uri: fileIndex.uri,
@@ -311,10 +309,9 @@ export class TextSearcher {
             const contextLine = lines[lineNumber - 1] || '';
             const highlightedLine = this.createHighlightedLine(contextLine, columnIndex, Math.min(query.replace(/\r\n|\r|\n/g, '\n').length, contextLine.length - columnIndex));
             
-            const fileType = this.getFileTypeIcon(fileName);
             results.push({
-                label: `${fileType} ${fileName} $(symbol-numeric) ${lineNumber}`,
-                description: `$(folder-opened) ${relativePath}`,
+                label: `${fileName}:${lineNumber}`,
+                description: relativePath,
                 detail: highlightedLine + ' (multi-line)',
                 type: SearchType.Text,
                 uri: file,
@@ -346,10 +343,9 @@ export class TextSearcher {
                 
                 const highlightedLine = this.createHighlightedLine(line, matchIndex, query.length);
                 
-                const fileType = this.getFileTypeIcon(fileName);
                 results.push({
-                    label: `${fileType} ${fileName} $(symbol-numeric) ${lineNumber}`,
-                    description: `$(folder-opened) ${relativePath}`,
+                    label: `${fileName}:${lineNumber}`,
+                    description: relativePath,
                     detail: highlightedLine,
                     type: SearchType.Text,
                     uri: file,
@@ -399,44 +395,7 @@ export class TextSearcher {
         return result;
     }
 
-    private getFileTypeIcon(fileName: string): string {
-        const ext = path.extname(fileName).toLowerCase();
-        const iconMap: { [key: string]: string } = {
-            '.ts': '$(file-code)',
-            '.js': '$(file-code)',
-            '.tsx': '$(file-code)',
-            '.jsx': '$(file-code)',
-            '.py': '$(file-code)',
-            '.go': '$(file-code)',
-            '.java': '$(file-code)',
-            '.cpp': '$(file-code)',
-            '.c': '$(file-code)',
-            '.cs': '$(file-code)',
-            '.php': '$(file-code)',
-            '.rb': '$(file-code)',
-            '.rs': '$(file-code)',
-            '.swift': '$(file-code)',
-            '.kt': '$(file-code)',
-            '.dart': '$(file-code)',
-            '.html': '$(file-code)',
-            '.css': '$(file-css)',
-            '.scss': '$(file-css)',
-            '.json': '$(json)',
-            '.xml': '$(file-code)',
-            '.md': '$(file-text)',
-            '.txt': '$(file-text)',
-            '.yml': '$(file-code)',
-            '.yaml': '$(file-code)',
-            '.sql': '$(database)',
-            '.sh': '$(terminal)',
-            '.bat': '$(terminal)',
-            '.dockerfile': '$(file-code)',
-            '.gitignore': '$(file)',
-            '.env': '$(file)'
-        };
-        
-        return iconMap[ext] || '$(file)';
-    }
+
 
     private calculateScore(query: string, lineText: string, range: vscode.Range): number {
         const lowerQuery = query.toLowerCase();
