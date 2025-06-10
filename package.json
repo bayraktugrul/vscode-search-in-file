@@ -21,8 +21,7 @@
     "keybindings": [
       {
         "command": "jetbrainsSearch.searchEverywhere",
-        "key": "shift+f",
-        "when": "editorTextFocus"
+        "key": "shift+f"
       }
     ]
   },
