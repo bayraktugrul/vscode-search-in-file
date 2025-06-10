@@ -4,7 +4,7 @@ Fast and powerful file search extension with JetBrains-like functionality. Searc
 
 ## Demo
 
-![EasySearch Demo](https://github.com/user-attachments/assets/3469a14f-1c90-49c4-960c-6f21019f7985)
+ <img src="https://github.com/bayraktugrul/vscode-search-in-file/blob/main/images/demo-comp.gif?raw=true" width="650" height="400" alt="demo"/>
 
 *See EasySearch in action: Press `Shift+F`, type your search query, navigate with arrow keys, and open files instantly!*
 
