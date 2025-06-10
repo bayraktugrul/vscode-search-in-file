@@ -77,6 +77,9 @@ export class SearchModal {
                 query: query,
                 searchId: searchId
             });
+            this.panel.webview.postMessage({
+                type: 'clearPreview'
+            });
             return;
         }
 
@@ -112,6 +115,11 @@ export class SearchModal {
                     this.currentResults[0].lineNumber,
                     query
                 );
+            } else {
+                // Clear preview when no results found
+                this.panel.webview.postMessage({
+                    type: 'clearPreview'
+                });
             }
         } catch (error) {
             console.error('Search error:', error);
@@ -123,6 +131,10 @@ export class SearchModal {
                     error: error instanceof Error ? error.message : 'Search failed',
                     query: query,
                     searchId: searchId
+                });
+                // Clear preview on error
+                this.panel.webview.postMessage({
+                    type: 'clearPreview'
                 });
             }
         }
@@ -296,6 +308,8 @@ export class SearchModal {
                     }
                 } else if (message.type === 'filePreview') {
                     renderPreview(message);
+                } else if (message.type === 'clearPreview') {
+                    clearPreview();
                 }
             });
             
@@ -345,15 +359,29 @@ export class SearchModal {
                 }
             }
             
+                        function clearPreview() {
+                previewHeader.innerHTML = \`
+                    <div class="preview-file-info">
+                        <div class="preview-file-name">Select a file to preview</div>
+                    </div>
+                \`;
+                previewContent.innerHTML = \`
+                    <div class="empty-state">
+                        <div class="empty-text">No preview available</div>
+                        <div class="empty-subtext">Click on a search result to preview</div>
+                    </div>
+                \`;
+            }
+            
             function renderPreview(data) {
-                                 previewHeader.innerHTML = \`
-                     <div class="preview-file-info">
-                         <div class="preview-file-name">
-                             \${data.fileName}
-                         </div>
-                         <div class="preview-file-path">\${vscode.workspace?.asRelativePath(data.filePath) || data.filePath}</div>
-                     </div>
-                 \`;
+                previewHeader.innerHTML = \`
+                    <div class="preview-file-info">
+                        <div class="preview-file-name">
+                            \${data.fileName}
+                        </div>
+                        <div class="preview-file-path">\${vscode.workspace?.asRelativePath(data.filePath) || data.filePath}</div>
+                    </div>
+                \`;
                 
                 const lines = data.content.split('\\n');
                 const html = lines.map((line, index) => {
