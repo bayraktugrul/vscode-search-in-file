@@ -14,6 +14,10 @@ export class SearchModal {
     public static createOrShow(context: vscode.ExtensionContext): SearchModal {
         if (SearchModal.currentModal) {
             SearchModal.currentModal.panel.reveal(vscode.ViewColumn.One);
+            // Send focus message to existing panel
+            SearchModal.currentModal.panel.webview.postMessage({
+                type: 'focusSearch'
+            });
             return SearchModal.currentModal;
         }
 
@@ -189,7 +193,16 @@ export class SearchModal {
             let selectedIndex = 0;
             let currentSearchId = 0;
             let isSearching = false;
-            searchInput.focus();
+            
+            // Ensure focus on search input with multiple attempts
+            function focusSearchInput() {
+                searchInput.focus();
+                searchInput.select();
+            }
+            
+            // Try focusing immediately and with delays to ensure it works
+            focusSearchInput();
+            setTimeout(focusSearchInput, 100);
             
             function autoResize() {
                 searchInput.style.height = 'auto';
@@ -317,6 +330,8 @@ export class SearchModal {
                     renderPreview(message);
                 } else if (message.type === 'clearPreview') {
                     clearPreview();
+                } else if (message.type === 'focusSearch') {
+                    focusSearchInput();
                 }
             });
             
@@ -748,7 +763,7 @@ export class SearchModal {
         <body>
             <div class="search-container">
                 <div class="search-wrapper">
-                    <textarea class="search-input" placeholder="Search in files... (Shift+Enter for new line, Enter to open, Esc to close)" autofocus rows="1"></textarea>
+                    <textarea class="search-input" placeholder="Search in files... (Shift+Enter for new line, Enter to open, Esc to close)" autofocus tabindex="0" rows="1"></textarea>
                     <div class="results-count"></div>
                 </div>
             </div>
