@@ -280,6 +280,15 @@ export class SearchModal {
                 document.querySelectorAll('.result-item').forEach((item, index) => {
                     item.classList.toggle('selected', index === selectedIndex);
                 });
+                
+                const selectedItem = document.querySelector('.result-item.selected');
+                if (selectedItem) {
+                    selectedItem.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'nearest',
+                        inline: 'nearest'
+                    });
+                }
             }
             
             function updateResultsCount(count) {
