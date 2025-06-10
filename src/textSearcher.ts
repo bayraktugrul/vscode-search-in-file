@@ -27,6 +27,10 @@ export class TextSearcher {
     private isIndexing = false;
     private lastIndexTime = 0;
     private indexingPromise: Promise<void> | null = null;
+    private static readonly MAX_INDEX_SIZE = 5000; 
+    private static readonly MAX_FILE_SIZE = 512 * 1024; 
+    private static readonly INDEX_CLEANUP_INTERVAL = 300000; 
+    private lastCleanupTime = 0;
 
     async search(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
         const results: SearchResult[] = [];
@@ -126,25 +130,49 @@ export class TextSearcher {
                 const document = await vscode.workspace.openTextDocument(file);
                 const content = document.getText();
                 
-                if (content.length > 1024 * 1024) {
+                if (content.length > TextSearcher.MAX_FILE_SIZE) {
                     continue;
                 }
                 
                 const fileName = path.basename(file.fsPath);
                 const relativePath = vscode.workspace.asRelativePath(file);
                 
+                const lines = content.split('\n');
                 index.set(file.fsPath, {
-                    content,
-                    lines: content.split('\n'),
+                    content: '', 
+                    lines,
                     lastModified: stat.mtime,
                     uri: file,
                     fileName,
                     relativePath
                 });
+                
+                if (index.size > TextSearcher.MAX_INDEX_SIZE) {
+                    this.cleanupOldEntries(index);
+                }
             } catch (error) {
                 continue;
             }
         }
+    }
+
+
+
+    private cleanupOldEntries(index: Map<string, FileIndex>): void {
+        const now = Date.now();
+        if (now - this.lastCleanupTime < TextSearcher.INDEX_CLEANUP_INTERVAL) {
+            return;
+        }
+    
+        const entries = Array.from(index.entries());
+        entries.sort(([,a], [,b]) => a.lastModified - b.lastModified);
+        
+        const removeCount = Math.floor(entries.length * 0.2);
+        for (let i = 0; i < removeCount; i++) {
+            index.delete(entries[i][0]);
+        }
+        
+        this.lastCleanupTime = now;
     }
 
     private searchSingleLineInIndex(fileIndex: FileIndex, query: string, results: SearchResult[]): void {
@@ -185,8 +213,9 @@ export class TextSearcher {
 
     private searchMultiLineInIndex(fileIndex: FileIndex, query: string, results: SearchResult[]): void {
         const normalizedQuery = query.replace(/\r\n|\r|\n/g, '\n').toLowerCase();
-        const normalizedText = fileIndex.content.replace(/\r\n|\r|\n/g, '\n').toLowerCase();
-        const originalNormalizedText = fileIndex.content.replace(/\r\n|\r|\n/g, '\n');
+        const reconstructedContent = fileIndex.lines.join('\n');
+        const normalizedText = reconstructedContent.toLowerCase();
+        const originalNormalizedText = reconstructedContent;
         
         let searchIndex = 0;
         let matchIndex = normalizedText.indexOf(normalizedQuery, searchIndex);
@@ -462,5 +491,13 @@ export class TextSearcher {
         }
 
         return finalResults;
+    }
+
+    public dispose(): void {
+        this.fileIndex.clear();
+        this.indexingPromise = null;
+        this.isIndexing = false;
+        this.lastIndexTime = 0;
+        this.lastCleanupTime = 0;
     }
 } 

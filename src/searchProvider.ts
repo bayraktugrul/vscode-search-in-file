@@ -13,5 +13,7 @@ export class SearchProvider {
         return await this.textSearcher.search(query, signal);
     }
 
-
+    public dispose(): void {
+        this.textSearcher.dispose();
+    }
 } 

@@ -69,6 +69,7 @@ export class SearchModal {
     private async performSearch(query: string): Promise<void> {
         if (this.abortController) {
             this.abortController.abort();
+            this.abortController = null;
         }
         
         const searchId = ++this.currentSearchId;
@@ -188,6 +189,7 @@ export class SearchModal {
             const resultsCount = document.querySelector('.results-count');
             
             let searchTimeout;
+            let focusTimeouts = [];
             let currentResults = [];
             let selectedIndex = 0;
             let currentSearchId = 0;
@@ -201,7 +203,7 @@ export class SearchModal {
             
             // Try focusing immediately and with delays to ensure it works
             focusSearchInput();
-            setTimeout(focusSearchInput, 100);
+            focusTimeouts.push(setTimeout(focusSearchInput, 100));
             
             function autoResize() {
                 searchInput.style.height = 'auto';
@@ -467,10 +469,23 @@ export class SearchModal {
             }
             
             function escapeHtml(text) {
+                if (typeof text !== 'string') return '';
                 const div = document.createElement('div');
                 div.textContent = text;
                 return div.innerHTML;
             }
+            
+            function cleanup() {
+                // Clear timeouts to prevent memory leaks
+                if (searchTimeout) {
+                    clearTimeout(searchTimeout);
+                }
+                focusTimeouts.forEach(timeout => clearTimeout(timeout));
+                focusTimeouts = [];
+                currentResults = [];
+            }
+            
+            window.addEventListener('beforeunload', cleanup);
             
             window.selectResult = selectResult;
             window.openResult = openResult;
@@ -821,8 +836,20 @@ export class SearchModal {
         </html>`;
     }
 
+
+
     public dispose(): void {
         SearchModal.currentModal = undefined;
+        
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+        
+        this.currentResults = [];
+        
+        this.searchProvider.dispose();
+        
         this.panel.dispose();
 
         while (this.disposables.length) {
