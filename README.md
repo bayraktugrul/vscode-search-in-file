@@ -2,6 +2,12 @@
 
 Fast and powerful file search extension with JetBrains-like functionality. Search text across all files in your workspace with instant results and navigation.
 
+## Demo
+
+![EasySearch Demo](images/demo-comp.gif)
+
+*See EasySearch in action: Press `Shift+F`, type your search query, navigate with arrow keys, and open files instantly!*
+
 ## Features
 
 - **Lightning Fast Search**: Optimized file indexing and search algorithms for instant results

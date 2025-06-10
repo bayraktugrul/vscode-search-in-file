@@ -2,6 +2,16 @@
 
 All notable changes to the "EasySearch - Search in Files" extension will be documented in this file.
 
+## [1.0.1] - 2025-06-10
+
+### Added
+- Demo GIF showing extension functionality in README
+- Visual demonstration of search workflow
+
+### Improved
+- README presentation with visual examples
+- Better marketplace presentation
+
 ## [1.0.0] - 2025-06-10
 
 ### Added
