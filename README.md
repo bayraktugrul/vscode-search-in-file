@@ -4,7 +4,7 @@ Fast and powerful file search extension with JetBrains-like functionality. Searc
 
 ## Demo
 
-![EasySearch Demo](images/demo-comp.gif)
+![EasySearch Demo](https://github.com/user-attachments/assets/3469a14f-1c90-49c4-960c-6f21019f7985)
 
 *See EasySearch in action: Press `Shift+F`, type your search query, navigate with arrow keys, and open files instantly!*
 
