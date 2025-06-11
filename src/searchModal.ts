@@ -120,10 +120,8 @@ export class SearchModal {
 
         try {
             const results = await this.searchProvider.search(query, this.abortController.signal);
-            
-            // Check if this search is still the latest one
             if (searchId !== this.currentSearchId) {
-                return; // Ignore outdated results
+                return;
             }
             
             this.currentResults = results.map(r => ({
@@ -149,7 +147,6 @@ export class SearchModal {
                     query
                 );
             } else {
-                // Clear preview when no results found
                 this.panel.webview.postMessage({
                     type: 'clearPreview'
                 });
@@ -964,27 +961,19 @@ export class SearchModal {
         </html>`;
     }
 
-
-
     public dispose(): void {
-        SearchModal.currentModal = undefined;
+       if (this.searchProvider) {
+            this.searchProvider.dispose();
+        }
         
+        // Abort any ongoing search
         if (this.abortController) {
             this.abortController.abort();
-            this.abortController = null;
         }
+        SearchModal.currentModal = undefined;
         
-        this.currentResults = [];
+        this.disposables.forEach(disposable => disposable.dispose());
+        this.disposables = [];
         
-        this.searchProvider.dispose();
-        
-        this.panel.dispose();
-
-        while (this.disposables.length) {
-            const disposable = this.disposables.pop();
-            if (disposable) {
-                disposable.dispose();
-            }
-        }
     }
 } 

@@ -69,6 +69,10 @@ export class TextSearcher {
     
     private progressCallback?: (message: string, progress?: number) => void;
     private readyPromise: Promise<void>;
+    
+    private scheduledTimeouts: NodeJS.Timeout[] = [];
+    private disposed = false;
+    private abortController: AbortController | null = null;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -187,14 +191,32 @@ export class TextSearcher {
     }
 
     private async scheduleIncrementalUpdate(): Promise<void> {
-        setTimeout(async () => {
-            if (!this.isIndexing) {
-                await this.performIncrementalUpdate();
+        if (this.disposed) {
+            return;
+        }
+        
+        const timeout = setTimeout(async () => {
+            const index = this.scheduledTimeouts.indexOf(timeout);
+            if (index > -1) {
+                this.scheduledTimeouts.splice(index, 1);
             }
-        }, 2000); 
+            
+            if (!this.disposed && !this.isIndexing) {
+                try {
+                    await this.performIncrementalUpdate();
+                } catch (error) {console.error('Background incremental update failed:', error);
+                }
+            }
+        }, 2000);
+        
+        this.scheduledTimeouts.push(timeout);
     }
 
     private async performIncrementalUpdate(): Promise<void> {
+        if (this.disposed) {
+            return;
+        }
+        
         try {
             this.reportProgress('Checking for file changes...');
             
@@ -203,6 +225,10 @@ export class TextSearcher {
                 '{**/node_modules/**,**/dist/**,**/build/**,**/out/**,**/.git/**,**/coverage/**,**/.vscode/**,**/target/**,**/bin/**,**/obj/**,**/.next/**,**/.nuxt/**,**/vendor/**}', 
                 15000
             );
+            
+            if (this.disposed) {
+                return;
+            }
             
             const textFiles = files.filter(file => {
                 const ext = path.extname(file.fsPath).toLowerCase();
@@ -214,16 +240,18 @@ export class TextSearcher {
             let removedFiles = 0;
             
             for (const file of textFiles) {
+                if (this.disposed) {
+                    return; 
+                }
+                
                 try {
                     const stat = await vscode.workspace.fs.stat(file);
                     const existing = this.fileIndex.get(file.fsPath);
                     
                     if (!existing) {
-                        // New file
                         await this.indexSingleFile(file, stat);
                         newFiles++;
                     } else if (existing.lastModified < stat.mtime) {
-                        // Modified file
                         await this.indexSingleFile(file, stat);
                         updatedFiles++;
                     }
@@ -232,7 +260,10 @@ export class TextSearcher {
                 }
             }
             
-            // Check for removed files
+            if (this.disposed) {
+                return;
+            }
+            
             const currentFilePaths = new Set(textFiles.map(f => f.fsPath));
             const indexedPaths = Array.from(this.fileIndex.keys());
             
@@ -243,16 +274,18 @@ export class TextSearcher {
                 }
             }
             
-            if (newFiles > 0 || updatedFiles > 0 || removedFiles > 0) {
+            if (!this.disposed && (newFiles > 0 || updatedFiles > 0 || removedFiles > 0)) {
                 this.lastIndexTime = Date.now();
                 await this.saveIndexToCache();
                 this.reportProgress(`Updated: +${newFiles} new, ~${updatedFiles} modified, -${removedFiles} removed`);
-            } else {
+            } else if (!this.disposed) {
                 this.reportProgress('No file changes detected');
             }
             
         } catch (error) {
-            console.error('Incremental update failed:', error);
+            if (!this.disposed) {
+                console.error('Incremental update failed:', error);
+            }
         }
     }
 
@@ -286,8 +319,16 @@ export class TextSearcher {
     }
 
     private reportProgress(message: string, progress?: number): void {
-        if (this.progressCallback) {
+         if (this.disposed || !this.progressCallback) {
+            return;
+        }
+        
+        try {
             this.progressCallback(message, progress);
+        } catch (error) {
+             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.log('Progress reporting failed (webview likely disposed):', errorMessage);
+            this.progressCallback = undefined;
         }
     }
 
@@ -382,7 +423,6 @@ export class TextSearcher {
                 this.indexingPromise = null;
             }
         }
-        // Otherwise just do incremental update if it's been a while
         else if (indexAge > 5 * 60 * 1000) { // 5 minutes
             await this.performIncrementalUpdate();
         }
@@ -674,10 +714,21 @@ export class TextSearcher {
     }
 
     public dispose(): void {
+        this.disposed = true;
+        
+        this.scheduledTimeouts.forEach(timeout => {
+            clearTimeout(timeout);
+        });
+        this.scheduledTimeouts = [];
+        
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+        
+        this.progressCallback = undefined;
+        
         this.fileIndex.clear();
-        this.indexingPromise = null;
-        this.isIndexing = false;
-        this.lastIndexTime = 0;
-        this.lastCleanupTime = 0;
+        
     }
 } 
