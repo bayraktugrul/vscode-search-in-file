@@ -76,12 +76,18 @@ export class TextSearcher {
     
     private caseSensitive = false; 
     private static readonly CASE_SENSITIVE_KEY = 'searchCaseSensitive';
+    
+    private excludePatterns: string[] = [];
+    private excludeEnabled = false;
+    private static readonly EXCLUDE_PATTERNS_KEY = 'searchExcludePatterns';
+    private static readonly EXCLUDE_ENABLED_KEY = 'searchExcludeEnabled';
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
         this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         this.workspaceHash = this.calculateWorkspaceHash();
         this.loadCaseSensitivePreference();
+        this.loadExcludePreferences();
         this.readyPromise = this.initialize();
     }
 
@@ -103,6 +109,29 @@ export class TextSearcher {
 
     public getCaseSensitive(): boolean {
         return this.caseSensitive;
+    }
+
+    private loadExcludePreferences(): void {
+        const savedPatterns = this.context.globalState.get<string[]>(TextSearcher.EXCLUDE_PATTERNS_KEY);
+        const savedEnabled = this.context.globalState.get<boolean>(TextSearcher.EXCLUDE_ENABLED_KEY);
+        
+        this.excludePatterns = savedPatterns || [];
+        this.excludeEnabled = savedEnabled || false;
+    }
+
+    public async setExcludePatterns(patterns: string[], enabled: boolean): Promise<void> {
+        this.excludePatterns = patterns;
+        this.excludeEnabled = enabled;
+        
+        await this.context.globalState.update(TextSearcher.EXCLUDE_PATTERNS_KEY, patterns);
+        await this.context.globalState.update(TextSearcher.EXCLUDE_ENABLED_KEY, enabled);
+    }
+
+    public async getExcludePatterns(): Promise<{patterns: string[], enabled: boolean}> {
+        return {
+            patterns: this.excludePatterns,
+            enabled: this.excludeEnabled
+        };
     }
 
     private async initialize(): Promise<void> {
@@ -400,6 +429,11 @@ export class TextSearcher {
                 
                 for (const [filePath, fileIndex] of batch) {
                     try {
+                        if (this.isFileExcluded(filePath)) {
+                            processedFiles++;
+                            continue;
+                        }
+
                         if (isMultiLineQuery) {
                             this.searchMultiLineInIndex(fileIndex, query, searchQuery, results);
                         } else {
@@ -639,6 +673,60 @@ export class TextSearcher {
             searchIndex = matchIndex + 1;
             matchIndex = searchText.indexOf(normalizedSearchQuery, searchIndex);
         }
+    }
+
+    private isFileExcluded(filePath: string): boolean {
+        if (!this.excludeEnabled || this.excludePatterns.length === 0) {
+            return false;
+        }
+
+        const relativePath = vscode.workspace.asRelativePath(filePath);
+        const fileName = path.basename(filePath);
+
+        for (const pattern of this.excludePatterns) {
+            if (pattern.trim() === '') continue;
+
+            let regexPattern = pattern
+                .replace(/[.+^${}()|[\]\\]/g, '\\$&') 
+                .replace(/\*/g, '.*') 
+                .replace(/\?/g, '.'); 
+
+            if (pattern.endsWith('/')) {
+                const dirRegex = new RegExp(`^${regexPattern}`, 'i');
+                if (dirRegex.test(relativePath + '/')) {
+                    return true;
+                }
+            }
+
+            const regex = new RegExp(`^${regexPattern}$`, 'i');
+
+            if (regex.test(relativePath) || 
+                regex.test(fileName) || 
+                regex.test(filePath)) {
+                return true;
+            }
+            
+            if (!pattern.includes('*') && !pattern.includes('?')) {
+                if (pattern.endsWith('/')) {
+                    const dirPattern = pattern.slice(0, -1); // Remove trailing /
+                    if (relativePath.startsWith(dirPattern + '/') || 
+                        relativePath.startsWith(dirPattern + '\\') ||
+                        relativePath === dirPattern) {
+                        return true;
+                    }
+                } else {
+                    // Handle exact file matches
+                    if (relativePath === pattern || 
+                        fileName === pattern ||
+                        relativePath.endsWith('/' + pattern) ||
+                        relativePath.endsWith('\\' + pattern)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     private createHighlightedLine(line: string, matchIndex: number, matchLength: number): string {

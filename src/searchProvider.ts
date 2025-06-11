@@ -51,6 +51,14 @@ export class SearchProvider {
         return this.textSearcher.getCaseSensitive();
     }
 
+    public async setExcludePatterns(patterns: string[], enabled: boolean): Promise<void> {
+        await this.textSearcher.setExcludePatterns(patterns, enabled);
+    }
+
+    public async getExcludePatterns(): Promise<{patterns: string[], enabled: boolean}> {
+        return await this.textSearcher.getExcludePatterns();
+    }
+
     public dispose(): void {
         this.textSearcher.dispose();
     }

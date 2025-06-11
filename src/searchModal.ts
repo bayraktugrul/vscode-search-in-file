@@ -60,7 +60,7 @@ export class SearchModal {
                         await this.initializeSearch();
                         break;
                     case 'search':
-                        await this.performSearch(message.query);
+                        await this.performSearch(message.query, message.excludePatterns);
                         break;
                     case 'toggleCaseSensitive':
                         await this.toggleCaseSensitive();
@@ -73,6 +73,9 @@ export class SearchModal {
                         break;
                     case 'close':
                         this.panel.dispose();
+                        break;
+                    case 'saveExcludePatterns':
+                        await this.saveExcludePatterns(message.patterns, message.enabled);
                         break;
                 }
             },
@@ -90,12 +93,27 @@ export class SearchModal {
                 type: 'searchInitialized',
                 caseSensitive: this.searchProvider.getCaseSensitive()
             });
+            
+            // Load exclude patterns
+            const excludeData = await this.searchProvider.getExcludePatterns();
+            this.panel.webview.postMessage({
+                type: 'excludePatternsLoaded',
+                data: excludeData
+            });
         } catch (error) {
             console.error('Search initialization error:', error);
             this.panel.webview.postMessage({
                 type: 'searchInitializationError',
                 error: error instanceof Error ? error.message : 'Failed to initialize search'
             });
+        }
+    }
+
+    private async saveExcludePatterns(patterns: string[], enabled: boolean): Promise<void> {
+        try {
+            await this.searchProvider.setExcludePatterns(patterns, enabled);
+        } catch (error) {
+            console.error('Failed to save exclude patterns:', error);
         }
     }
 
@@ -114,7 +132,7 @@ export class SearchModal {
         }
     }
 
-    private async performSearch(query: string): Promise<void> {
+    private async performSearch(query: string, excludePatterns: string[] = []): Promise<void> {
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
@@ -241,8 +259,12 @@ export class SearchModal {
             let searchInitialized = false;
             let caseSensitive = false;
             let lastQuery = '';
+            let excludePatterns = [];
+            let excludeEnabled = false;
             
             const caseSensitiveBtn = document.querySelector('.case-sensitive-btn');
+            const excludeInput = document.querySelector('.exclude-input');
+            const excludeToggleBtn = document.querySelector('.exclude-toggle-btn');
             
             showProgress('Initializing search index...');
             vscode.postMessage({ type: 'initializeSearch' });
@@ -256,6 +278,27 @@ export class SearchModal {
             
             caseSensitiveBtn.addEventListener('click', () => {
                 vscode.postMessage({ type: 'toggleCaseSensitive' });
+            });
+            
+            excludeToggleBtn.addEventListener('click', () => {
+                excludeEnabled = !excludeEnabled;
+                updateExcludeButton();
+                saveExcludePatterns();
+                if (lastQuery.length >= 2) {
+                    performNewSearch();
+                }
+            });
+            
+            excludeInput.addEventListener('input', (e) => {
+                const patterns = e.target.value.split(',').map(p => p.trim()).filter(p => p.length > 0);
+                excludePatterns = patterns;
+                saveExcludePatterns();
+                if (lastQuery.length >= 2 && excludeEnabled) {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        performNewSearch();
+                    }, 300);
+                }
             });
             
 
@@ -290,7 +333,8 @@ export class SearchModal {
                         vscode.postMessage({
                             type: 'search',
                             query: query,
-                            searchId: currentSearchId
+                            searchId: currentSearchId,
+                            excludePatterns: excludeEnabled ? excludePatterns : []
                         });
                     } else if (!searchInitialized && query.length >= 2) {
                          resultsContainer.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><div class="loading-text">Preparing search index...</div></div>';
@@ -425,7 +469,8 @@ export class SearchModal {
                         vscode.postMessage({
                             type: 'search',
                             query: lastQuery,
-                            searchId: currentSearchId
+                            searchId: currentSearchId,
+                            excludePatterns: excludeEnabled ? excludePatterns : []
                         });
                     }
                 } else if (message.type === 'searchInitializationError') {
@@ -437,6 +482,8 @@ export class SearchModal {
                     clearPreview();
                 } else if (message.type === 'focusSearch') {
                     focusSearchInput();
+                } else if (message.type === 'excludePatternsLoaded') {
+                    loadExcludePatterns(message.data);
                 }
             });
             
@@ -447,6 +494,51 @@ export class SearchModal {
                     caseSensitiveBtn.classList.add('active');
                 } else {
                     caseSensitiveBtn.classList.remove('active');
+                }
+            }
+            
+            function updateExcludeButton() {
+                const eyeOpen = excludeToggleBtn.querySelector('.eye-open');
+                const eyeClosed = excludeToggleBtn.querySelector('.eye-closed');
+                
+                if (excludeEnabled) {
+                    excludeToggleBtn.classList.add('active');
+                    if (eyeOpen) eyeOpen.style.display = 'block';
+                    if (eyeClosed) eyeClosed.style.display = 'none';
+                } else {
+                    excludeToggleBtn.classList.remove('active');
+                    if (eyeOpen) eyeOpen.style.display = 'none';
+                    if (eyeClosed) eyeClosed.style.display = 'block';
+                }
+            }
+            
+            function saveExcludePatterns() {
+                vscode.postMessage({
+                    type: 'saveExcludePatterns',
+                    patterns: excludePatterns,
+                    enabled: excludeEnabled
+                });
+            }
+            
+            function loadExcludePatterns(data) {
+                excludePatterns = data.patterns || [];
+                excludeEnabled = data.enabled || false;
+                excludeInput.value = excludePatterns.join(', ');
+                updateExcludeButton();
+            }
+            
+            function performNewSearch() {
+                if (!isSearching && searchInitialized && lastQuery.length >= 2) {
+                    resultsContainer.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><div class="loading-text">Searching...</div></div>';
+                    updateResultsCount(0);
+                    isSearching = true;
+                    currentSearchId++;
+                    vscode.postMessage({
+                        type: 'search',
+                        query: lastQuery,
+                        searchId: currentSearchId,
+                        excludePatterns: excludeEnabled ? excludePatterns : []
+                    });
                 }
             }
             
@@ -692,6 +784,82 @@ export class SearchModal {
                     flex-shrink: 0;
                 }
                 
+                .exclude-wrapper {
+                    margin-top: 8px;
+                    border-top: 1px solid var(--vscode-panel-border);
+                    padding-top: 8px;
+                }
+                
+                .exclude-input-container {
+                    position: relative;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                
+                .exclude-input {
+                    flex: 1;
+                    padding: 4px 8px;
+                    background: var(--vscode-input-background);
+                    color: var(--vscode-input-foreground);
+                    border: 1px solid var(--vscode-input-border);
+                    border-radius: 3px;
+                    font-size: 12px;
+                    font-weight: 400;
+                    transition: all 0.2s ease;
+                    height: 24px;
+                }
+                
+                .exclude-input:focus {
+                    outline: none;
+                    border-color: var(--vscode-focusBorder);
+                }
+                
+                .exclude-input::placeholder {
+                    color: var(--vscode-input-placeholderForeground);
+                    opacity: 0.6;
+                }
+                
+                .exclude-toggle-btn {
+                    position: relative;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 24px;
+                    height: 24px;
+                    background: var(--vscode-toolbar-hoverBackground);
+                    border: 1px solid var(--vscode-panel-border);
+                    border-radius: 3px;
+                    color: var(--vscode-foreground);
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    opacity: 0.7;
+                }
+                
+                .exclude-toggle-btn:hover {
+                    background: var(--vscode-list-hoverBackground);
+                    border-color: var(--vscode-textLink-foreground);
+                    opacity: 0.9;
+                }
+                
+                .exclude-toggle-btn.active {
+                    background: var(--vscode-textLink-foreground);
+                    border-color: var(--vscode-textLink-foreground);
+                    color: var(--vscode-button-foreground);
+                    opacity: 1;
+                }
+                
+                .exclude-toggle-btn:not(.active) {
+                    background: var(--vscode-button-secondaryBackground);
+                    color: var(--vscode-disabledForeground);
+                    opacity: 0.6;
+                }
+                
+                .exclude-toggle-btn:not(.active):hover {
+                    background: var(--vscode-button-secondaryHoverBackground);
+                    opacity: 0.8;
+                }
+                
                 .case-sensitive-btn {
                     position: absolute;
                     right: 8px;
@@ -766,7 +934,8 @@ export class SearchModal {
                     border-bottom-color: var(--vscode-editorHoverWidget-background);
                 }
                 
-                .case-sensitive-btn:hover .tooltip {
+                .case-sensitive-btn:hover .tooltip,
+                .exclude-toggle-btn:hover .tooltip {
                     opacity: 1;
                     visibility: visible;
                     transform: translateX(-50%) translateY(2px);
@@ -1096,6 +1265,22 @@ export class SearchModal {
                         </div>
                         <div class="search-controls">
                             <div class="results-count"></div>
+                        </div>
+                    </div>
+                    <div class="exclude-wrapper">
+                        <div class="exclude-input-container">
+                            <input class="exclude-input" placeholder="Exclude paths (e.g., node_modules, *.test.js, dist/)" type="text">
+                            <button class="exclude-toggle-btn" type="button">
+                                <svg class="eye-open" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                                    <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                                </svg>
+                                <svg class="eye-closed" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display: none;">
+                                    <path d="m10.79 12.912-1.614-1.615a3.5 3.5 0 0 1-4.474-4.474l-2.06-2.06C.938 6.278 0 8 0 8s3 5.5 8 5.5a7.029 7.029 0 0 0 2.79-.588zM5.21 3.088A7.028 7.028 0 0 1 8 2.5c5 0 8 5.5 8 5.5s-.939 1.721-2.641 3.238l-2.062-2.062a3.5 3.5 0 0 0-4.474-4.474L5.21 3.089z"/>
+                                    <path d="M5.525 7.646a2.5 2.5 0 0 0 2.829 2.829l-2.83-2.829zm4.95.708-2.829-2.83a2.5 2.5 0 0 1 2.829 2.829zm3.171 6-12-12 .708-.708 12 12-.708.708z"/>
+                                </svg>
+                                <div class="tooltip">Enable/Disable Exclude Patterns</div>
+                            </button>
                         </div>
                     </div>
                 </div>
