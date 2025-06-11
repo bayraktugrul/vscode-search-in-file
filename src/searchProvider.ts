@@ -6,8 +6,8 @@ export class SearchProvider {
     private textSearcher: TextSearcher;
     private progressCallback?: (message: string, progress?: number) => void;
 
-    constructor() {
-        this.textSearcher = new TextSearcher();
+    constructor(context: vscode.ExtensionContext) {
+        this.textSearcher = new TextSearcher(context);
         
         // Set up progress reporting
         this.textSearcher.setProgressCallback((message: string, progress?: number) => {

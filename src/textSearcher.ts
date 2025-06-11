@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SearchResult, SearchType } from './types';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 interface FileIndex {
     content: string;
@@ -9,6 +10,7 @@ interface FileIndex {
     uri: vscode.Uri;
     fileName: string;
     relativePath: string;
+    hash?: string; 
 }
 
 interface SearchState {
@@ -16,6 +18,18 @@ interface SearchState {
     isSearching: boolean;
     lastSearchTime: number;
     pendingSearches: number;
+}
+
+interface CachedIndex {
+    version: string;
+    workspaceHash: string;
+    lastIndexTime: number;
+    fileIndex: { [filePath: string]: Omit<FileIndex, 'uri'> & { uriPath: string } };
+    stats: {
+        totalFiles: number;
+        totalSize: number;
+        excludedFiles: number;
+    };
 }
 
 export class TextSearcher {
@@ -37,7 +51,14 @@ export class TextSearcher {
     private static readonly MAX_INDEX_SIZE = 8000;
     private static readonly MAX_FILE_SIZE = 1024 * 1024;
     private static readonly INDEX_CLEANUP_INTERVAL = 300000;
+    private static readonly CACHE_VERSION = '1.2.0'; // Increment when changing cache format
+    private static readonly CACHE_KEY = 'textSearchIndex';
+    private static readonly MAX_CACHE_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
     private lastCleanupTime = 0;
+    
+    private context: vscode.ExtensionContext;
+    private workspaceRoot: string;
+    private workspaceHash: string;
     
     private searchState: SearchState = {
         isReady: false,
@@ -47,20 +68,216 @@ export class TextSearcher {
     };
     
     private progressCallback?: (message: string, progress?: number) => void;
-    
     private readyPromise: Promise<void>;
 
-    constructor() {
+    constructor(context: vscode.ExtensionContext) {
+        this.context = context;
+        this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        this.workspaceHash = this.calculateWorkspaceHash();
         this.readyPromise = this.initialize();
+    }
+
+    private calculateWorkspaceHash(): string {
+        const workspaceName = vscode.workspace.name || 'default';
+        const workspacePath = this.workspaceRoot;
+        return crypto.createHash('md5').update(`${workspaceName}:${workspacePath}`).digest('hex').substring(0, 8);
     }
 
     private async initialize(): Promise<void> {
         try {
-            await this.updateIndex();
+            this.reportProgress('Loading search index...');
+            
+            const loaded = await this.loadIndexFromCache();
+            if (loaded) {
+                this.reportProgress(`Loaded ${this.fileIndex.size} files from cache`);
+                
+                this.scheduleIncrementalUpdate();
+            } else {
+                this.reportProgress('Building search index...');
+                await this.updateIndex();
+            }
+            
             this.searchState.isReady = true;
+            this.reportProgress(`Search ready: ${this.fileIndex.size} files indexed`);
         } catch (error) {
             console.error('Failed to initialize search index:', error);
             this.searchState.isReady = true;
+        }
+    }
+
+    private async loadIndexFromCache(): Promise<boolean> {
+        try {
+            const cached = this.context.workspaceState.get<CachedIndex>(TextSearcher.CACHE_KEY);
+            
+            if (!cached || 
+                cached.version !== TextSearcher.CACHE_VERSION ||
+                cached.workspaceHash !== this.workspaceHash ||
+                Date.now() - cached.lastIndexTime > TextSearcher.MAX_CACHE_AGE) {
+                
+                this.reportProgress('Cache outdated, rebuilding index...');
+                return false;
+            }
+
+            this.reportProgress(`Loading ${Object.keys(cached.fileIndex).length} files from cache...`);
+            
+            this.fileIndex.clear();
+            let loadedCount = 0;
+            
+            for (const [filePath, cachedFile] of Object.entries(cached.fileIndex)) {
+                try {
+                    const uri = vscode.Uri.file(cachedFile.uriPath);
+                    const stat = await vscode.workspace.fs.stat(uri);
+                    
+                    if (stat.mtime === cachedFile.lastModified) {
+                        this.fileIndex.set(filePath, {
+                            ...cachedFile,
+                            uri: uri
+                        });
+                        loadedCount++;
+                    }
+                } catch (error) {
+                    continue;
+                }
+            }
+
+            this.lastIndexTime = cached.lastIndexTime;
+            
+            this.reportProgress(`Loaded ${loadedCount} files from cache (${Object.keys(cached.fileIndex).length - loadedCount} outdated)`);
+            
+            if (loadedCount < Object.keys(cached.fileIndex).length * 0.8) {
+                this.reportProgress('Too many outdated files, rebuilding index...');
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Failed to load cache:', error);
+            return false;
+        }
+    }
+
+    private async saveIndexToCache(): Promise<void> {
+        try {
+            const cacheData: CachedIndex = {
+                version: TextSearcher.CACHE_VERSION,
+                workspaceHash: this.workspaceHash,
+                lastIndexTime: this.lastIndexTime,
+                fileIndex: {},
+                stats: {
+                    totalFiles: this.fileIndex.size,
+                    totalSize: 0,
+                    excludedFiles: 0
+                }
+            };
+
+            // Convert file index to cacheable format
+            for (const [filePath, fileIndex] of this.fileIndex) {
+                const { uri, ...rest } = fileIndex;
+                cacheData.fileIndex[filePath] = {
+                    ...rest,
+                    uriPath: uri.fsPath
+                };
+            }
+
+            await this.context.workspaceState.update(TextSearcher.CACHE_KEY, cacheData);
+            this.reportProgress('Index cached successfully');
+        } catch (error) {
+            console.error('Failed to save cache:', error);
+        }
+    }
+
+    private async scheduleIncrementalUpdate(): Promise<void> {
+        setTimeout(async () => {
+            if (!this.isIndexing) {
+                await this.performIncrementalUpdate();
+            }
+        }, 2000); 
+    }
+
+    private async performIncrementalUpdate(): Promise<void> {
+        try {
+            this.reportProgress('Checking for file changes...');
+            
+            const files = await vscode.workspace.findFiles(
+                '**/*', 
+                '{**/node_modules/**,**/dist/**,**/build/**,**/out/**,**/.git/**,**/coverage/**,**/.vscode/**,**/target/**,**/bin/**,**/obj/**,**/.next/**,**/.nuxt/**,**/vendor/**}', 
+                15000
+            );
+            
+            const textFiles = files.filter(file => {
+                const ext = path.extname(file.fsPath).toLowerCase();
+                return !TextSearcher.EXCLUDED_EXTENSIONS.has(ext);
+            });
+
+            let updatedFiles = 0;
+            let newFiles = 0;
+            let removedFiles = 0;
+            
+            for (const file of textFiles) {
+                try {
+                    const stat = await vscode.workspace.fs.stat(file);
+                    const existing = this.fileIndex.get(file.fsPath);
+                    
+                    if (!existing) {
+                        // New file
+                        await this.indexSingleFile(file, stat);
+                        newFiles++;
+                    } else if (existing.lastModified < stat.mtime) {
+                        // Modified file
+                        await this.indexSingleFile(file, stat);
+                        updatedFiles++;
+                    }
+                } catch (error) {
+                    continue;
+                }
+            }
+            
+            // Check for removed files
+            const currentFilePaths = new Set(textFiles.map(f => f.fsPath));
+            const indexedPaths = Array.from(this.fileIndex.keys());
+            
+            for (const indexedPath of indexedPaths) {
+                if (!currentFilePaths.has(indexedPath)) {
+                    this.fileIndex.delete(indexedPath);
+                    removedFiles++;
+                }
+            }
+            
+            if (newFiles > 0 || updatedFiles > 0 || removedFiles > 0) {
+                this.lastIndexTime = Date.now();
+                await this.saveIndexToCache();
+                this.reportProgress(`Updated: +${newFiles} new, ~${updatedFiles} modified, -${removedFiles} removed`);
+            } else {
+                this.reportProgress('No file changes detected');
+            }
+            
+        } catch (error) {
+            console.error('Incremental update failed:', error);
+        }
+    }
+
+    private async indexSingleFile(file: vscode.Uri, stat: vscode.FileStat): Promise<void> {
+        try {
+            if (stat.size > TextSearcher.MAX_FILE_SIZE) {
+                return;
+            }
+
+            const document = await vscode.workspace.openTextDocument(file);
+            const content = document.getText();
+            
+            const fileName = path.basename(file.fsPath);
+            const relativePath = vscode.workspace.asRelativePath(file);
+            
+            const lines = content.split('\n');
+            this.fileIndex.set(file.fsPath, {
+                content: '', 
+                lines,
+                lastModified: stat.mtime,
+                uri: file,
+                fileName,
+                relativePath
+            });
+        } catch (error) {
         }
     }
 
@@ -95,6 +312,7 @@ export class TextSearcher {
         this.searchState.lastSearchTime = Date.now();
 
         try {
+            // Only do expensive index update if it's really old
             await this.ensureIndexIsUpdated();
 
             if (signal?.aborted) {
@@ -155,7 +373,7 @@ export class TextSearcher {
         const now = Date.now();
         const indexAge = now - this.lastIndexTime;
         
-        if (indexAge > 60000 || this.fileIndex.size === 0) {
+        if (indexAge > 2 * 60 * 60 * 1000 || this.fileIndex.size === 0) {
             if (this.indexingPromise) {
                 await this.indexingPromise;
             } else {
@@ -164,6 +382,10 @@ export class TextSearcher {
                 this.indexingPromise = null;
             }
         }
+        // Otherwise just do incremental update if it's been a while
+        else if (indexAge > 5 * 60 * 1000) { // 5 minutes
+            await this.performIncrementalUpdate();
+        }
     }
 
     private async updateIndex(): Promise<void> {
@@ -171,7 +393,7 @@ export class TextSearcher {
         
         this.isIndexing = true;
         try {
-            this.reportProgress('Indexing workspace files...');
+            this.reportProgress('Full indexing workspace files...');
             
             const files = await vscode.workspace.findFiles(
                 '**/*', 
@@ -184,7 +406,7 @@ export class TextSearcher {
                 return !TextSearcher.EXCLUDED_EXTENSIONS.has(ext);
             });
 
-            this.reportProgress(`Indexing ${textFiles.length} files...`);
+            this.reportProgress(`Full indexing ${textFiles.length} files...`);
 
             const newIndex = new Map<string, FileIndex>();
             let processedCount = 0;
@@ -204,7 +426,10 @@ export class TextSearcher {
 
             this.fileIndex = newIndex;
             this.lastIndexTime = Date.now();
-            this.reportProgress(`Index updated: ${newIndex.size} files`);
+            
+            await this.saveIndexToCache();
+            
+            this.reportProgress(`Full index updated: ${newIndex.size} files cached`);
         } finally {
             this.isIndexing = false;
         }

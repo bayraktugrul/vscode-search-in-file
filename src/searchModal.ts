@@ -41,7 +41,7 @@ export class SearchModal {
 
     private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext) {
         this.panel = panel;
-        this.searchProvider = new SearchProvider();
+        this.searchProvider = new SearchProvider(context);
 
         this.searchProvider.setProgressCallback((message: string, progress?: number) => {
             this.panel.webview.postMessage({
