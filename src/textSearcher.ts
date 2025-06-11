@@ -11,8 +11,15 @@ interface FileIndex {
     relativePath: string;
 }
 
+interface SearchState {
+    isReady: boolean;
+    isSearching: boolean;
+    lastSearchTime: number;
+    pendingSearches: number;
+}
+
 export class TextSearcher {
-    private static readonly BATCH_SIZE = 20;
+    private static readonly BATCH_SIZE = 50;
     private static readonly EXCLUDED_EXTENSIONS = new Set([
         '.zip', '.tar', '.gz', '.rar', '.7z',
         '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico',
@@ -27,10 +34,45 @@ export class TextSearcher {
     private isIndexing = false;
     private lastIndexTime = 0;
     private indexingPromise: Promise<void> | null = null;
-    private static readonly MAX_INDEX_SIZE = 5000; 
-    private static readonly MAX_FILE_SIZE = 512 * 1024; 
-    private static readonly INDEX_CLEANUP_INTERVAL = 300000; 
+    private static readonly MAX_INDEX_SIZE = 8000;
+    private static readonly MAX_FILE_SIZE = 1024 * 1024;
+    private static readonly INDEX_CLEANUP_INTERVAL = 300000;
     private lastCleanupTime = 0;
+    
+    private searchState: SearchState = {
+        isReady: false,
+        isSearching: false,
+        lastSearchTime: 0,
+        pendingSearches: 0
+    };
+    
+    private progressCallback?: (message: string, progress?: number) => void;
+    
+    private readyPromise: Promise<void>;
+
+    constructor() {
+        this.readyPromise = this.initialize();
+    }
+
+    private async initialize(): Promise<void> {
+        try {
+            await this.updateIndex();
+            this.searchState.isReady = true;
+        } catch (error) {
+            console.error('Failed to initialize search index:', error);
+            this.searchState.isReady = true;
+        }
+    }
+
+    public setProgressCallback(callback: (message: string, progress?: number) => void): void {
+        this.progressCallback = callback;
+    }
+
+    private reportProgress(message: string, progress?: number): void {
+        if (this.progressCallback) {
+            this.progressCallback(message, progress);
+        }
+    }
 
     async search(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
         const results: SearchResult[] = [];
@@ -43,31 +85,69 @@ export class TextSearcher {
             throw new Error('Search aborted');
         }
 
-        await this.ensureIndexIsUpdated();
+        if (!this.searchState.isReady) {
+            this.reportProgress('Initializing search index...');
+            await this.readyPromise;
+        }
+
+        this.searchState.isSearching = true;
+        this.searchState.pendingSearches++;
+        this.searchState.lastSearchTime = Date.now();
 
         try {
+            await this.ensureIndexIsUpdated();
+
+            if (signal?.aborted) {
+                throw new Error('Search aborted');
+            }
+
+            this.reportProgress('Searching files...');
+            
             const lowerQuery = query.toLowerCase();
             const isMultiLineQuery = query.includes('\n') || query.includes('\r\n') || query.includes('\r');
+            
+            let processedFiles = 0;
+            const totalFiles = this.fileIndex.size;
 
-            for (const [filePath, fileIndex] of this.fileIndex) {
+            const fileEntries = Array.from(this.fileIndex.entries());
+            
+            for (let i = 0; i < fileEntries.length; i += TextSearcher.BATCH_SIZE) {
                 if (signal?.aborted) {
                     throw new Error('Search aborted');
                 }
                 
-                try {
-                    if (isMultiLineQuery) {
-                        this.searchMultiLineInIndex(fileIndex, query, results);
-                    } else {
-                        this.searchSingleLineInIndex(fileIndex, query, results);
+                const batch = fileEntries.slice(i, i + TextSearcher.BATCH_SIZE);
+                
+                for (const [filePath, fileIndex] of batch) {
+                    try {
+                        if (isMultiLineQuery) {
+                            this.searchMultiLineInIndex(fileIndex, query, results);
+                        } else {
+                            this.searchSingleLineInIndex(fileIndex, query, results);
+                        }
+                        processedFiles++;
+                    } catch (fileError) {
+                        continue;
                     }
-                } catch (fileError) {
-                    continue;
+                }
+                
+                const progress = Math.round((processedFiles / totalFiles) * 100);
+                this.reportProgress(`Searching... ${processedFiles}/${totalFiles} files`, progress);
+                
+                if (i % (TextSearcher.BATCH_SIZE * 4) === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 0));
                 }
             }
+
         } catch (error) {
             console.error('Text search error:', error);
+            throw error;
+        } finally {
+            this.searchState.isSearching = false;
+            this.searchState.pendingSearches = Math.max(0, this.searchState.pendingSearches - 1);
         }
 
+        this.reportProgress(`Found ${results.length} results`);
         return this.sortAndLimitResults(results);
     }
 
@@ -75,7 +155,7 @@ export class TextSearcher {
         const now = Date.now();
         const indexAge = now - this.lastIndexTime;
         
-        if (indexAge > 30000 || this.fileIndex.size === 0) {
+        if (indexAge > 60000 || this.fileIndex.size === 0) {
             if (this.indexingPromise) {
                 await this.indexingPromise;
             } else {
@@ -91,10 +171,12 @@ export class TextSearcher {
         
         this.isIndexing = true;
         try {
+            this.reportProgress('Indexing workspace files...');
+            
             const files = await vscode.workspace.findFiles(
                 '**/*', 
-                '{**/node_modules/**,**/dist/**,**/build/**,**/out/**,**/.git/**,**/coverage/**,**/.vscode/**,**/target/**,**/bin/**,**/obj/**}', 
-                10000
+                '{**/node_modules/**,**/dist/**,**/build/**,**/out/**,**/.git/**,**/coverage/**,**/.vscode/**,**/target/**,**/bin/**,**/obj/**,**/.next/**,**/.nuxt/**,**/vendor/**}', 
+                15000
             );
             
             const textFiles = files.filter(file => {
@@ -102,37 +184,49 @@ export class TextSearcher {
                 return !TextSearcher.EXCLUDED_EXTENSIONS.has(ext);
             });
 
+            this.reportProgress(`Indexing ${textFiles.length} files...`);
+
             const newIndex = new Map<string, FileIndex>();
+            let processedCount = 0;
             
             for (let i = 0; i < textFiles.length; i += TextSearcher.BATCH_SIZE) {
                 const batch = textFiles.slice(i, i + TextSearcher.BATCH_SIZE);
                 await this.indexBatch(batch, newIndex);
+                
+                processedCount += batch.length;
+                const progress = Math.round((processedCount / textFiles.length) * 100);
+                this.reportProgress(`Indexed ${processedCount}/${textFiles.length} files`, progress);
+                
+                if (i % (TextSearcher.BATCH_SIZE * 2) === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
             }
 
             this.fileIndex = newIndex;
             this.lastIndexTime = Date.now();
+            this.reportProgress(`Index updated: ${newIndex.size} files`);
         } finally {
             this.isIndexing = false;
         }
     }
 
     private async indexBatch(files: vscode.Uri[], index: Map<string, FileIndex>): Promise<void> {
-        for (const file of files) {
+        const promises = files.map(async (file) => {
             try {
                 const stat = await vscode.workspace.fs.stat(file);
                 const existing = this.fileIndex.get(file.fsPath);
                 
                 if (existing && existing.lastModified >= stat.mtime) {
                     index.set(file.fsPath, existing);
-                    continue;
+                    return;
+                }
+
+                if (stat.size > TextSearcher.MAX_FILE_SIZE) {
+                    return;
                 }
 
                 const document = await vscode.workspace.openTextDocument(file);
                 const content = document.getText();
-                
-                if (content.length > TextSearcher.MAX_FILE_SIZE) {
-                    continue;
-                }
                 
                 const fileName = path.basename(file.fsPath);
                 const relativePath = vscode.workspace.asRelativePath(file);
@@ -151,12 +245,20 @@ export class TextSearcher {
                     this.cleanupOldEntries(index);
                 }
             } catch (error) {
-                continue;
+                return;
             }
-        }
+        });
+
+        await Promise.all(promises);
     }
 
+    public getSearchState(): SearchState {
+        return { ...this.searchState };
+    }
 
+    public async waitForReady(): Promise<void> {
+        await this.readyPromise;
+    }
 
     private cleanupOldEntries(index: Map<string, FileIndex>): void {
         const now = Date.now();
@@ -255,110 +357,6 @@ export class TextSearcher {
         }
     }
 
-    private async processBatch(files: vscode.Uri[], query: string, results: SearchResult[]): Promise<void> {
-        for (const file of files) {
-            try {
-                const document = await vscode.workspace.openTextDocument(file);
-                const text = document.getText();
-                const fileName = path.basename(file.fsPath);
-                const relativePath = vscode.workspace.asRelativePath(file);
-                
-                if (text.length > 1024 * 1024) {
-                    continue;
-                }
-                
-                const isMultiLineQuery = query.includes('\n') || query.includes('\r\n') || query.includes('\r');
-                
-                if (isMultiLineQuery) {
-                    this.processMultiLineQuery(file, text, query, fileName, relativePath, results);
-                } else {
-                    this.processSingleLineQuery(file, text, query, fileName, relativePath, results);
-                }
-            } catch (fileError) {
-                continue;
-            }
-        }
-    }
-
-    private processMultiLineQuery(file: vscode.Uri, text: string, query: string, fileName: string, relativePath: string, results: SearchResult[]): void {
-        const normalizedQuery = query.replace(/\r\n|\r|\n/g, '\n').toLowerCase();
-        const normalizedText = text.replace(/\r\n|\r|\n/g, '\n').toLowerCase();
-        const originalNormalizedText = text.replace(/\r\n|\r|\n/g, '\n');
-        
-        let searchIndex = 0;
-        let matchIndex = normalizedText.indexOf(normalizedQuery, searchIndex);
-        
-        while (matchIndex !== -1) {
-            const beforeMatch = originalNormalizedText.substring(0, matchIndex);
-            const lineNumber = beforeMatch.split('\n').length;
-            const lineStartIndex = beforeMatch.lastIndexOf('\n') + 1;
-            const columnIndex = matchIndex - lineStartIndex;
-            
-            const matchEnd = matchIndex + normalizedQuery.length;
-            const afterMatch = originalNormalizedText.substring(0, matchEnd);
-            const endLineNumber = afterMatch.split('\n').length;
-            const endLineStartIndex = afterMatch.lastIndexOf('\n') + 1;
-            const endColumnIndex = matchEnd - endLineStartIndex;
-            
-            const range = new vscode.Range(
-                lineNumber - 1, columnIndex,
-                endLineNumber - 1, endColumnIndex
-            );
-            
-            const lines = originalNormalizedText.split('\n');
-            const contextLine = lines[lineNumber - 1] || '';
-            const highlightedLine = this.createHighlightedLine(contextLine, columnIndex, Math.min(query.replace(/\r\n|\r|\n/g, '\n').length, contextLine.length - columnIndex));
-            
-            results.push({
-                label: `${fileName}:${lineNumber}`,
-                description: relativePath,
-                detail: highlightedLine + ' (multi-line)',
-                type: SearchType.Text,
-                uri: file,
-                range: range,
-                score: this.calculateScore(query, contextLine, range) + 10
-            });
-            
-            searchIndex = matchIndex + 1;
-            matchIndex = normalizedText.indexOf(normalizedQuery, searchIndex);
-        }
-    }
-
-    private processSingleLineQuery(file: vscode.Uri, text: string, query: string, fileName: string, relativePath: string, results: SearchResult[]): void {
-        const lines = text.split('\n');
-        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-            const line = lines[lineIndex];
-            const lowerLine = line.toLowerCase();
-            const lowerQuery = query.toLowerCase();
-            
-            let searchIndex = 0;
-            let matchIndex = lowerLine.indexOf(lowerQuery, searchIndex);
-            
-            while (matchIndex !== -1) {
-                const lineNumber = lineIndex + 1;
-                const range = new vscode.Range(
-                    lineIndex, matchIndex,
-                    lineIndex, matchIndex + query.length
-                );
-                
-                const highlightedLine = this.createHighlightedLine(line, matchIndex, query.length);
-                
-                results.push({
-                    label: `${fileName}:${lineNumber}`,
-                    description: relativePath,
-                    detail: highlightedLine,
-                    type: SearchType.Text,
-                    uri: file,
-                    range: range,
-                    score: this.calculateScore(query, line, range)
-                });
-                
-                searchIndex = matchIndex + 1;
-                matchIndex = lowerLine.indexOf(lowerQuery, searchIndex);
-            }
-        }
-    }
-
     private createHighlightedLine(line: string, matchIndex: number, matchLength: number): string {
         const trimmedLine = line.trim();
         if (trimmedLine.length === 0) {
@@ -394,8 +392,6 @@ export class TextSearcher {
         
         return result;
     }
-
-
 
     private calculateScore(query: string, lineText: string, range: vscode.Range): number {
         const lowerQuery = query.toLowerCase();

@@ -43,11 +43,22 @@ export class SearchModal {
         this.panel = panel;
         this.searchProvider = new SearchProvider();
 
+        this.searchProvider.setProgressCallback((message: string, progress?: number) => {
+            this.panel.webview.postMessage({
+                type: 'searchProgress',
+                message: message,
+                progress: progress
+            });
+        });
+
         this.panel.webview.html = this.getWebviewContent();
         
         this.panel.webview.onDidReceiveMessage(
             async (message) => {
                 switch (message.type) {
+                    case 'initializeSearch':
+                        await this.initializeSearch();
+                        break;
                     case 'search':
                         await this.performSearch(message.query);
                         break;
@@ -67,6 +78,21 @@ export class SearchModal {
         );
 
         this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    }
+
+    private async initializeSearch(): Promise<void> {
+        try {
+            await this.searchProvider.waitForReady();
+            this.panel.webview.postMessage({
+                type: 'searchInitialized'
+            });
+        } catch (error) {
+            console.error('Search initialization error:', error);
+            this.panel.webview.postMessage({
+                type: 'searchInitializationError',
+                error: error instanceof Error ? error.message : 'Failed to initialize search'
+            });
+        }
     }
 
     private async performSearch(query: string): Promise<void> {
@@ -197,6 +223,10 @@ export class SearchModal {
             let selectedIndex = 0;
             let currentSearchId = 0;
             let isSearching = false;
+            let searchInitialized = false;
+            
+            showProgress('Initializing search index...');
+            vscode.postMessage({ type: 'initializeSearch' });
             
             // Ensure focus on search input with multiple attempts
             function focusSearchInput() {
@@ -232,7 +262,7 @@ export class SearchModal {
                 }
                 
                 searchTimeout = setTimeout(() => {
-                    if (!isSearching) {
+                    if (!isSearching && searchInitialized) {
                         isSearching = true;
                         currentSearchId++;
                         vscode.postMessage({
@@ -240,6 +270,8 @@ export class SearchModal {
                             query: query,
                             searchId: currentSearchId
                         });
+                    } else if (!searchInitialized && query.length >= 2) {
+                         resultsContainer.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><div class="loading-text">Preparing search index...</div></div>';
                     }
                 }, 150);
             });
@@ -350,6 +382,18 @@ export class SearchModal {
                         renderError(message.error);
                         isSearching = false;
                     }
+                } else if (message.type === 'searchProgress') {
+                   
+                    showProgress(message.message, message.progress);
+                } else if (message.type === 'searchInitialized') {
+                  
+                    searchInitialized = true;
+                    resultsContainer.innerHTML = '<div class="empty-state"><div class="empty-text">Start typing to search...</div></div>';
+                    focusSearchInput();
+                } else if (message.type === 'searchInitializationError') {
+                  
+                    searchInitialized = false;
+                    renderError(message.error || 'Failed to initialize search');
                 } else if (message.type === 'filePreview') {
                     renderPreview(message);
                 } else if (message.type === 'clearPreview') {
@@ -360,6 +404,20 @@ export class SearchModal {
             });
             
 
+            
+            function showProgress(message, progress) {
+                const progressHtml = progress !== undefined ? 
+                    \`<div class="progress-bar">
+                        <div class="progress-fill" style="width: \${progress}%"></div>
+                    </div>\` : '';
+                
+                resultsContainer.innerHTML = \`<div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">\${message}</div>
+                    \${progressHtml}
+                </div>\`;
+                updateResultsCount(0);
+            }
             
             function renderError(errorMessage) {
                 resultsContainer.innerHTML = \`<div class="empty-state">
@@ -806,6 +864,22 @@ export class SearchModal {
                     color: var(--vscode-descriptionForeground);
                     font-size: 14px;
                     font-weight: 500;
+                }
+                
+                .progress-bar {
+                    width: 200px;
+                    height: 4px;
+                    background: var(--vscode-panel-border);
+                    border-radius: 2px;
+                    overflow: hidden;
+                    margin-top: 12px;
+                }
+                
+                .progress-fill {
+                    height: 100%;
+                    background: var(--vscode-textLink-foreground);
+                    transition: width 0.3s ease;
+                    border-radius: 2px;
                 }
                 
                 @keyframes spin {

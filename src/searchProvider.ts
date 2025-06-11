@@ -4,13 +4,43 @@ import { TextSearcher } from './textSearcher';
 
 export class SearchProvider {
     private textSearcher: TextSearcher;
+    private progressCallback?: (message: string, progress?: number) => void;
 
     constructor() {
         this.textSearcher = new TextSearcher();
+        
+        // Set up progress reporting
+        this.textSearcher.setProgressCallback((message: string, progress?: number) => {
+            if (this.progressCallback) {
+                this.progressCallback(message, progress);
+            }
+        });
+    }
+
+    public setProgressCallback(callback: (message: string, progress?: number) => void): void {
+        this.progressCallback = callback;
     }
 
     async search(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
-        return await this.textSearcher.search(query, signal);
+        try {
+            // Ensure searcher is ready before starting search
+            await this.textSearcher.waitForReady();
+            return await this.textSearcher.search(query, signal);
+        } catch (error) {
+            if (signal?.aborted) {
+                throw new Error('Search cancelled');
+            }
+            console.error('Search provider error:', error);
+            throw error;
+        }
+    }
+
+    public getSearchState() {
+        return this.textSearcher.getSearchState();
+    }
+
+    public async waitForReady(): Promise<void> {
+        await this.textSearcher.waitForReady();
     }
 
     public dispose(): void {
