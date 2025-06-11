@@ -741,10 +741,10 @@ export class SearchModal {
                 }
                 
                 .floating-window {
-                    width: 900px;
-                    height: 700px;
-                    max-width: 90vw;
-                    max-height: 85vh;
+                    width: 1100px;
+                    height: 800px;
+                    max-width: 95vw;
+                    max-height: 90vh;
                     background: var(--vscode-editor-background);
                     border: 1px solid var(--vscode-panel-border);
                     border-radius: 12px;
