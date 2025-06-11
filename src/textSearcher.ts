@@ -74,7 +74,7 @@ export class TextSearcher {
     private disposed = false;
     private abortController: AbortController | null = null;
     
-    private caseSensitive = true; 
+    private caseSensitive = false; 
     private static readonly CASE_SENSITIVE_KEY = 'searchCaseSensitive';
 
     constructor(context: vscode.ExtensionContext) {
@@ -93,7 +93,7 @@ export class TextSearcher {
 
     private loadCaseSensitivePreference(): void {
         const saved = this.context.globalState.get<boolean>(TextSearcher.CASE_SENSITIVE_KEY);
-        this.caseSensitive = saved !== undefined ? saved : true; // Default true
+        this.caseSensitive = saved !== undefined ? saved : false; // Default false
     }
 
     public async setCaseSensitive(caseSensitive: boolean): Promise<void> {

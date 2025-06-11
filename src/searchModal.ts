@@ -239,7 +239,7 @@ export class SearchModal {
             let currentSearchId = 0;
             let isSearching = false;
             let searchInitialized = false;
-            let caseSensitive = true;
+            let caseSensitive = false;
             let lastQuery = '';
             
             const caseSensitiveBtn = document.querySelector('.case-sensitive-btn');
@@ -451,10 +451,8 @@ export class SearchModal {
             function updateCaseSensitiveButton() {
                 if (caseSensitive) {
                     caseSensitiveBtn.classList.add('active');
-                    caseSensitiveBtn.title = 'Case Sensitive (On)';
                 } else {
                     caseSensitiveBtn.classList.remove('active');
-                    caseSensitiveBtn.title = 'Case Sensitive (Off)';
                 }
             }
             
@@ -514,7 +512,7 @@ export class SearchModal {
                         lineNumber: currentResults[index].lineNumber
                     });
                 }
-            }
+            } 
             
                         function clearPreview() {
                 previewHeader.innerHTML = \`
@@ -682,6 +680,13 @@ export class SearchModal {
                     gap: 12px;
                 }
                 
+                .search-input-container {
+                    position: relative;
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                }
+                
                 .search-controls {
                     display: flex;
                     align-items: center;
@@ -690,24 +695,30 @@ export class SearchModal {
                 }
                 
                 .case-sensitive-btn {
+                    position: absolute;
+                    right: 8px;
+                    top: 50%;
+                    transform: translateY(-50%);
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    width: 32px;
-                    height: 32px;
-                    background: transparent;
+                    width: 28px;
+                    height: 28px;
+                    background: var(--vscode-toolbar-hoverBackground);
                     border: 1px solid var(--vscode-panel-border);
                     border-radius: 4px;
                     color: var(--vscode-foreground);
                     cursor: pointer;
-                    transition: all 0.2s ease;
-                    opacity: 0.6;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    opacity: 0.7;
+                    z-index: 10;
                 }
                 
                 .case-sensitive-btn:hover {
-                    background: var(--vscode-toolbar-hoverBackground);
+                    background: var(--vscode-list-hoverBackground);
                     border-color: var(--vscode-textLink-foreground);
-                    opacity: 0.8;
+                    opacity: 0.9;
+                    transform: translateY(-50%);
                 }
                 
                 .case-sensitive-btn.active {
@@ -715,16 +726,57 @@ export class SearchModal {
                     border-color: var(--vscode-textLink-foreground);
                     color: var(--vscode-button-foreground);
                     opacity: 1;
+                    transform: translateY(-50%);
                 }
                 
                 .case-sensitive-btn.active:hover {
                     background: var(--vscode-textLink-activeForeground);
                     border-color: var(--vscode-textLink-activeForeground);
+                    transform: translateY(-50%);
+                }
+                
+
+                
+                .tooltip {
+                    position: absolute;
+                    top: 120%;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: var(--vscode-editorHoverWidget-background);
+                    color: var(--vscode-editorHoverWidget-foreground);
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    font-weight: 500;
+                    white-space: nowrap;
+                    opacity: 0;
+                    visibility: hidden;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    pointer-events: none;
+                    z-index: 1000;
+                    border: 1px solid var(--vscode-editorHoverWidget-border);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                }
+                
+                .tooltip::before {
+                    content: '';
+                    position: absolute;
+                    bottom: 100%;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    border: 4px solid transparent;
+                    border-bottom-color: var(--vscode-editorHoverWidget-background);
+                }
+                
+                .case-sensitive-btn:hover .tooltip {
+                    opacity: 1;
+                    visibility: visible;
+                    transform: translateX(-50%) translateY(2px);
                 }
                 
                 .search-input {
                     width: 100%;
-                    padding: 6px 12px;
+                    padding: 6px 40px 6px 12px;
                     background: var(--vscode-input-background);
                     color: var(--vscode-input-foreground);
                     border: 1px solid var(--vscode-input-border);
@@ -1017,14 +1069,17 @@ export class SearchModal {
             <div class="floating-window" onclick="event.stopPropagation()">
                 <div class="search-container">
                     <div class="search-wrapper">
-                        <textarea class="search-input" placeholder="Search in files... (Shift+Enter for new line, Enter to open, Esc to close)" autofocus tabindex="0" rows="1"></textarea>
-                        <div class="search-controls">
-                            <button class="case-sensitive-btn active" title="Case Sensitive (default: On)" type="button">
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <div class="search-input-container">
+                            <textarea class="search-input" placeholder="Search in files... (Shift+Enter for new line, Enter to open, Esc to close)" autofocus tabindex="0" rows="1"></textarea>
+                            <button class="case-sensitive-btn" type="button">
+                                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
                                     <path d="M8.854 11.702h-1.18L7.4 10.4H4.6l-.274 1.302H3.146L5.734 5.2h1.132l2.588 6.502zM7.1 9.402L6.014 6.4h-.028L4.9 9.402H7.1z"/>
                                     <path d="M12.314 11.702h-.992l-.274-.302c-.284.268-.68.402-1.188.402-.396 0-.734-.114-1.014-.342-.28-.228-.42-.532-.42-.912 0-.424.168-.754.504-1.004C9.264 9.284 9.714 9.16 10.3 9.16h1.014v-.158c0-.256-.07-.448-.21-.576-.14-.128-.35-.192-.63-.192-.224 0-.406.048-.546.144-.14.096-.21.228-.21.396h-.994c0-.268.094-.504.282-.708.188-.204.434-.358.738-.462.304-.104.628-.156.972-.156.608 0 1.092.148 1.452.444.36.296.54.724.54 1.284v2.688zm-1.008-.84v-.588H10.3c-.308 0-.532.06-.672.18-.14.12-.21.274-.21.462 0 .168.054.302.162.402.108.1.258.15.45.15.216 0 .402-.068.558-.204.156-.136.234-.31.234-.522z"/>
                                 </svg>
+                                <div class="tooltip">Case Sensitive</div>
                             </button>
+                        </div>
+                        <div class="search-controls">
                             <div class="results-count"></div>
                         </div>
                     </div>
