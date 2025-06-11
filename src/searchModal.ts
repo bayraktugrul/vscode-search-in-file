@@ -479,7 +479,11 @@ export class SearchModal {
                 }
                 
                                  const html = results.map((result, index) => {
-                     return \`<div class="result-item \${index === 0 ? 'selected' : ''}" onclick="selectResult(\${index})" ondblclick="openResult(\${index})">
+                    
+                     const isGoTestFile = result.fileName.endsWith('.go') && result.fileName.toLowerCase().includes('test');
+                     const testFileClass = isGoTestFile ? 'go-test-file' : '';
+                     
+                     return \`<div class="result-item \${index === 0 ? 'selected' : ''} \${testFileClass}" onclick="selectResult(\${index})" ondblclick="openResult(\${index})">
                          <div class="result-content">
                              <div class="result-line">\${highlightText(result.lineText.trim(), query)}</div>
                          </div>
@@ -844,6 +848,22 @@ export class SearchModal {
                     color: var(--vscode-list-activeSelectionForeground);
                     border-left: 3px solid var(--vscode-textLink-foreground);
                     box-shadow: inset 0 0 10px rgba(0, 122, 255, 0.1);
+                }
+                
+                .result-item.go-test-file {
+                    background: rgba(76, 175, 80, 0.1);
+                    border-left: 2px solid rgba(76, 175, 80, 0.3);
+                }
+                
+                .result-item.go-test-file:hover {
+                    background: rgba(76, 175, 80, 0.15);
+                    border-left: 2px solid rgba(76, 175, 80, 0.5);
+                }
+                
+                .result-item.go-test-file.selected {
+                    background: rgba(76, 175, 80, 0.2);
+                    border-left: 3px solid #4CAF50;
+                    box-shadow: inset 0 0 10px rgba(76, 175, 80, 0.2);
                 }
                 
                 .result-content {
