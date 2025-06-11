@@ -258,13 +258,7 @@ export class SearchModal {
                 vscode.postMessage({ type: 'toggleCaseSensitive' });
             });
             
-            function autoResize() {
-                searchInput.style.height = 'auto';
-                searchInput.style.height = Math.min(searchInput.scrollHeight, 80) + 'px';
-            }
-            
-            searchInput.addEventListener('input', autoResize);
-            searchInput.addEventListener('paste', () => setTimeout(autoResize, 0));
+
             
             searchInput.addEventListener('input', (e) => {
                 clearTimeout(searchTimeout);
@@ -776,7 +770,7 @@ export class SearchModal {
                 
                 .search-input {
                     width: 100%;
-                    padding: 6px 40px 6px 12px;
+                    padding: 4px 40px 4px 12px;
                     background: var(--vscode-input-background);
                     color: var(--vscode-input-foreground);
                     border: 1px solid var(--vscode-input-border);
@@ -785,7 +779,8 @@ export class SearchModal {
                     font-weight: 400;
                     transition: all 0.2s ease;
                     resize: vertical;
-                    min-height: 28px;
+                    height: 32px;
+                    min-height: 32px;
                     max-height: 80px;
                     overflow-y: auto;
                     font-family: inherit;
