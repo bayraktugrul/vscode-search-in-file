@@ -13,7 +13,7 @@ export class SearchModal {
 
     public static createOrShow(context: vscode.ExtensionContext): SearchModal {
         if (SearchModal.currentModal) {
-            SearchModal.currentModal.panel.reveal(vscode.ViewColumn.One);
+            SearchModal.currentModal.panel.reveal();
             // Send focus message to existing panel
             SearchModal.currentModal.panel.webview.postMessage({
                 type: 'focusSearch'
@@ -24,10 +24,13 @@ export class SearchModal {
         const panel = vscode.window.createWebviewPanel(
             'easySearchModal',
             'Find in Files',
-            vscode.ViewColumn.One,
+            {
+                viewColumn: vscode.ViewColumn.Active,
+                preserveFocus: false
+            },
             {
                 enableScripts: true,
-                retainContextWhenHidden: true,
+                retainContextWhenHidden: false,
                 localResourceRoots: [context.extensionUri]
             }
         );
@@ -270,6 +273,17 @@ export class SearchModal {
                 }
             });
             
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    vscode.postMessage({ type: 'close' });
+                }
+            });
+            
+            function handleBackdropClick(event) {
+                vscode.postMessage({ type: 'close' });
+            }
+            
             function navigateResults(direction) {
                 if (currentResults.length === 0) return;
                 
@@ -500,12 +514,52 @@ export class SearchModal {
                     margin: 0;
                     padding: 0;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-                    background: var(--vscode-editor-background);
+                    background: rgba(0, 0, 0, 0.3);
                     color: var(--vscode-editor-foreground);
                     height: 100vh;
                     display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    overflow: hidden;
+                    animation: fadeIn 0.2s ease-out;
+                }
+                
+                @keyframes fadeIn {
+                    from {
+                        opacity: 0;
+                        background: transparent;
+                    }
+                    to {
+                        opacity: 1;
+                        background: rgba(0, 0, 0, 0.3);
+                    }
+                }
+                
+                @keyframes slideIn {
+                    from {
+                        transform: scale(0.9) translateY(-20px);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: scale(1) translateY(0);
+                        opacity: 1;
+                    }
+                }
+                
+                .floating-window {
+                    width: 900px;
+                    height: 700px;
+                    max-width: 90vw;
+                    max-height: 85vh;
+                    background: var(--vscode-editor-background);
+                    border: 1px solid var(--vscode-panel-border);
+                    border-radius: 12px;
+                    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+                    display: flex;
                     flex-direction: column;
                     overflow: hidden;
+                    position: relative;
+                    animation: slideIn 0.3s ease-out;
                 }
                 
                 .search-container {
@@ -797,31 +851,33 @@ export class SearchModal {
                 }
             </style>
         </head>
-        <body>
-            <div class="search-container">
-                <div class="search-wrapper">
-                    <textarea class="search-input" placeholder="Search in files... (Shift+Enter for new line, Enter to open, Esc to close)" autofocus tabindex="0" rows="1"></textarea>
-                    <div class="results-count"></div>
-                </div>
-            </div>
-            
-            <div class="content-container">
-                <div class="results-container">
-                    <div class="empty-state">
-                        <div class="empty-text">Start typing to search...</div>
+        <body onclick="handleBackdropClick(event)">
+            <div class="floating-window" onclick="event.stopPropagation()">
+                <div class="search-container">
+                    <div class="search-wrapper">
+                        <textarea class="search-input" placeholder="Search in files... (Shift+Enter for new line, Enter to open, Esc to close)" autofocus tabindex="0" rows="1"></textarea>
+                        <div class="results-count"></div>
                     </div>
                 </div>
                 
-                <div class="preview-container">
-                    <div class="preview-header">
-                        <div class="preview-file-info">
-                            <div class="preview-file-name">Select a file to preview</div>
+                <div class="content-container">
+                    <div class="results-container">
+                        <div class="empty-state">
+                            <div class="empty-text">Start typing to search...</div>
                         </div>
                     </div>
-                    <div class="preview-content">
-                        <div class="empty-state">
-                            <div class="empty-text">No preview available</div>
-                            <div class="empty-subtext">Click on a search result to preview</div>
+                    
+                    <div class="preview-container">
+                        <div class="preview-header">
+                            <div class="preview-file-info">
+                                <div class="preview-file-name">Select a file to preview</div>
+                            </div>
+                        </div>
+                        <div class="preview-content">
+                            <div class="empty-state">
+                                <div class="empty-text">No preview available</div>
+                                <div class="empty-subtext">Click on a search result to preview</div>
+                            </div>
                         </div>
                     </div>
                 </div>
