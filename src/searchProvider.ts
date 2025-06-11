@@ -43,6 +43,14 @@ export class SearchProvider {
         await this.textSearcher.waitForReady();
     }
 
+    public async setCaseSensitive(caseSensitive: boolean): Promise<void> {
+        await this.textSearcher.setCaseSensitive(caseSensitive);
+    }
+
+    public getCaseSensitive(): boolean {
+        return this.textSearcher.getCaseSensitive();
+    }
+
     public dispose(): void {
         this.textSearcher.dispose();
     }

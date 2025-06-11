@@ -73,11 +73,15 @@ export class TextSearcher {
     private scheduledTimeouts: NodeJS.Timeout[] = [];
     private disposed = false;
     private abortController: AbortController | null = null;
+    
+    private caseSensitive = true; 
+    private static readonly CASE_SENSITIVE_KEY = 'searchCaseSensitive';
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
         this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         this.workspaceHash = this.calculateWorkspaceHash();
+        this.loadCaseSensitivePreference();
         this.readyPromise = this.initialize();
     }
 
@@ -85,6 +89,20 @@ export class TextSearcher {
         const workspaceName = vscode.workspace.name || 'default';
         const workspacePath = this.workspaceRoot;
         return crypto.createHash('md5').update(`${workspaceName}:${workspacePath}`).digest('hex').substring(0, 8);
+    }
+
+    private loadCaseSensitivePreference(): void {
+        const saved = this.context.globalState.get<boolean>(TextSearcher.CASE_SENSITIVE_KEY);
+        this.caseSensitive = saved !== undefined ? saved : true; // Default true
+    }
+
+    public async setCaseSensitive(caseSensitive: boolean): Promise<void> {
+        this.caseSensitive = caseSensitive;
+        await this.context.globalState.update(TextSearcher.CASE_SENSITIVE_KEY, caseSensitive);
+    }
+
+    public getCaseSensitive(): boolean {
+        return this.caseSensitive;
     }
 
     private async initialize(): Promise<void> {
@@ -218,8 +236,6 @@ export class TextSearcher {
         }
         
         try {
-            this.reportProgress('Checking for file changes...');
-            
             const files = await vscode.workspace.findFiles(
                 '**/*', 
                 '{**/node_modules/**,**/dist/**,**/build/**,**/out/**,**/.git/**,**/coverage/**,**/.vscode/**,**/target/**,**/bin/**,**/obj/**,**/.next/**,**/.nuxt/**,**/vendor/**}', 
@@ -227,7 +243,7 @@ export class TextSearcher {
             );
             
             if (this.disposed) {
-                return;
+                return; 
             }
             
             const textFiles = files.filter(file => {
@@ -277,9 +293,7 @@ export class TextSearcher {
             if (!this.disposed && (newFiles > 0 || updatedFiles > 0 || removedFiles > 0)) {
                 this.lastIndexTime = Date.now();
                 await this.saveIndexToCache();
-                this.reportProgress(`Updated: +${newFiles} new, ~${updatedFiles} modified, -${removedFiles} removed`);
-            } else if (!this.disposed) {
-                this.reportProgress('No file changes detected');
+                console.log(`Index updated: +${newFiles} new, ~${updatedFiles} modified, -${removedFiles} removed`);
             }
             
         } catch (error) {
@@ -319,16 +333,23 @@ export class TextSearcher {
     }
 
     private reportProgress(message: string, progress?: number): void {
-         if (this.disposed || !this.progressCallback) {
+        if (this.disposed || !this.progressCallback) {
             return;
+        }
+        
+        if (message.includes('file changes') || message.includes('Updated:') || message.includes('No file changes')) {
+            const isActiveOperation = this.searchState.isSearching || this.searchState.pendingSearches > 0;
+            if (!isActiveOperation) {
+                return; 
+            }
         }
         
         try {
             this.progressCallback(message, progress);
         } catch (error) {
-             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             console.log('Progress reporting failed (webview likely disposed):', errorMessage);
-            this.progressCallback = undefined;
+            this.progressCallback = undefined; // Clear callback to prevent future errors
         }
     }
 
@@ -353,7 +374,6 @@ export class TextSearcher {
         this.searchState.lastSearchTime = Date.now();
 
         try {
-            // Only do expensive index update if it's really old
             await this.ensureIndexIsUpdated();
 
             if (signal?.aborted) {
@@ -362,7 +382,8 @@ export class TextSearcher {
 
             this.reportProgress('Searching files...');
             
-            const lowerQuery = query.toLowerCase();
+            // Case sensitive logic
+            const searchQuery = this.caseSensitive ? query : query.toLowerCase();
             const isMultiLineQuery = query.includes('\n') || query.includes('\r\n') || query.includes('\r');
             
             let processedFiles = 0;
@@ -380,9 +401,9 @@ export class TextSearcher {
                 for (const [filePath, fileIndex] of batch) {
                     try {
                         if (isMultiLineQuery) {
-                            this.searchMultiLineInIndex(fileIndex, query, results);
+                            this.searchMultiLineInIndex(fileIndex, query, searchQuery, results);
                         } else {
-                            this.searchSingleLineInIndex(fileIndex, query, results);
+                            this.searchSingleLineInIndex(fileIndex, query, searchQuery, results);
                         }
                         processedFiles++;
                     } catch (fileError) {
@@ -542,24 +563,22 @@ export class TextSearcher {
         this.lastCleanupTime = now;
     }
 
-    private searchSingleLineInIndex(fileIndex: FileIndex, query: string, results: SearchResult[]): void {
-        const lowerQuery = query.toLowerCase();
-        
+    private searchSingleLineInIndex(fileIndex: FileIndex, originalQuery: string, searchQuery: string, results: SearchResult[]): void {
         for (let lineIndex = 0; lineIndex < fileIndex.lines.length; lineIndex++) {
             const line = fileIndex.lines[lineIndex];
-            const lowerLine = line.toLowerCase();
+            const searchLine = this.caseSensitive ? line : line.toLowerCase();
             
             let searchIndex = 0;
-            let matchIndex = lowerLine.indexOf(lowerQuery, searchIndex);
+            let matchIndex = searchLine.indexOf(searchQuery, searchIndex);
             
             while (matchIndex !== -1) {
                 const lineNumber = lineIndex + 1;
                 const range = new vscode.Range(
                     lineIndex, matchIndex,
-                    lineIndex, matchIndex + query.length
+                    lineIndex, matchIndex + originalQuery.length
                 );
                 
-                const highlightedLine = this.createHighlightedLine(line, matchIndex, query.length);
+                const highlightedLine = this.createHighlightedLine(line, matchIndex, originalQuery.length);
                 
                 results.push({
                     label: `${fileIndex.fileName}:${lineNumber}`,
@@ -568,32 +587,32 @@ export class TextSearcher {
                     type: SearchType.Text,
                     uri: fileIndex.uri,
                     range: range,
-                    score: this.calculateScore(query, line, range)
+                    score: this.calculateScore(originalQuery, line, range)
                 });
                 
                 searchIndex = matchIndex + 1;
-                matchIndex = lowerLine.indexOf(lowerQuery, searchIndex);
+                matchIndex = searchLine.indexOf(searchQuery, searchIndex);
             }
         }
     }
 
-    private searchMultiLineInIndex(fileIndex: FileIndex, query: string, results: SearchResult[]): void {
-        const normalizedQuery = query.replace(/\r\n|\r|\n/g, '\n').toLowerCase();
-        const reconstructedContent = fileIndex.lines.join('\n');
-        const normalizedText = reconstructedContent.toLowerCase();
-        const originalNormalizedText = reconstructedContent;
+    private searchMultiLineInIndex(fileIndex: FileIndex, originalQuery: string, searchQuery: string, results: SearchResult[]): void {
+        const fullText = fileIndex.lines.join('\n');
+        const searchText = this.caseSensitive ? fullText : fullText.toLowerCase();
+        
+        const normalizedSearchQuery = searchQuery.replace(/\r\n|\r|\n/g, '\n');
         
         let searchIndex = 0;
-        let matchIndex = normalizedText.indexOf(normalizedQuery, searchIndex);
+        let matchIndex = searchText.indexOf(normalizedSearchQuery, searchIndex);
         
         while (matchIndex !== -1) {
-            const beforeMatch = originalNormalizedText.substring(0, matchIndex);
+            const beforeMatch = fullText.substring(0, matchIndex);
             const lineNumber = beforeMatch.split('\n').length;
             const lineStartIndex = beforeMatch.lastIndexOf('\n') + 1;
             const columnIndex = matchIndex - lineStartIndex;
             
-            const matchEnd = matchIndex + normalizedQuery.length;
-            const afterMatch = originalNormalizedText.substring(0, matchEnd);
+            const matchEnd = matchIndex + normalizedSearchQuery.length;
+            const afterMatch = fullText.substring(0, matchEnd);
             const endLineNumber = afterMatch.split('\n').length;
             const endLineStartIndex = afterMatch.lastIndexOf('\n') + 1;
             const endColumnIndex = matchEnd - endLineStartIndex;
@@ -603,9 +622,9 @@ export class TextSearcher {
                 endLineNumber - 1, endColumnIndex
             );
             
-            const lines = originalNormalizedText.split('\n');
+            const lines = fullText.split('\n');
             const contextLine = lines[lineNumber - 1] || '';
-            const highlightedLine = this.createHighlightedLine(contextLine, columnIndex, Math.min(query.replace(/\r\n|\r|\n/g, '\n').length, contextLine.length - columnIndex));
+            const highlightedLine = this.createHighlightedLine(contextLine, columnIndex, Math.min(originalQuery.replace(/\r\n|\r|\n/g, '\n').length, contextLine.length - columnIndex));
             
             results.push({
                 label: `${fileIndex.fileName}:${lineNumber}`,
@@ -614,11 +633,11 @@ export class TextSearcher {
                 type: SearchType.Text,
                 uri: fileIndex.uri,
                 range: range,
-                score: this.calculateScore(query, contextLine, range) + 10
+                score: this.calculateScore(originalQuery, contextLine, range) + 10
             });
             
             searchIndex = matchIndex + 1;
-            matchIndex = normalizedText.indexOf(normalizedQuery, searchIndex);
+            matchIndex = searchText.indexOf(normalizedSearchQuery, searchIndex);
         }
     }
 
