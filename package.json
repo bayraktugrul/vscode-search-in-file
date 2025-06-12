@@ -2,7 +2,7 @@
   "name": "easysearch-search-in-files",
   "displayName": "EasySearch - Search in Files",
   "description": "Fast and powerful search in files extension with JetBrains-like functionality. Search text across all files in your workspace with instant results and navigation.",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "publisher": "bayraktugrul",
   "author": {
     "name": "bayraktugrul"
@@ -50,8 +50,8 @@
     "keybindings": [
       {
         "command": "easySearch.searchInFiles",
-        "key": "shift+f",
-        "mac": "shift+f"
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f"
       }
     ]
   },

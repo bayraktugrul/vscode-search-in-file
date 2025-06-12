@@ -6,7 +6,7 @@ Fast and powerful file search extension with JetBrains-like functionality. Searc
 
  <img src="https://github.com/bayraktugrul/vscode-search-in-file/blob/main/images/demo-comp.gif?raw=true" width="650" height="400" alt="demo"/>
 
-*See EasySearch in action: Press `Shift+F`, type your search query, navigate with arrow keys, and open files instantly!*
+*See EasySearch in action: Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows/Linux), type your search query, navigate with arrow keys, and open files instantly!*
 
 ## Features
 
@@ -18,7 +18,7 @@ Fast and powerful file search extension with JetBrains-like functionality. Searc
   - Memory-efficient file indexing with cleanup
   - Automatic search cancellation to prevent freezing
 - **User-Friendly Interface**: Clean, intuitive search modal with highlighted matches
-- **Keyboard Shortcuts**: Quick access with `Shift+F` shortcut
+- **Keyboard Shortcuts**: Quick access with `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows/Linux) shortcut
 - **Multi-line Search Support**: Search across multiple lines in files
 - **Safe Search**: Handles special characters and regex patterns safely
 
@@ -33,7 +33,7 @@ Fast and powerful file search extension with JetBrains-like functionality. Searc
 
 ### Quick Start
 
-1. Press `Shift+F` to open the search modal
+1. Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows/Linux) to open the search modal
 2. Type your search query
 3. Use arrow keys (↑/↓) to navigate through results
 4. Press `Enter` to open the selected file
@@ -45,7 +45,7 @@ Fast and powerful file search extension with JetBrains-like functionality. Searc
 
 ### Keyboard Shortcuts
 
-- `Shift+F` - Open search modal
+- `Cmd+Shift+F` (macOS) / `Ctrl+Shift+F` (Windows/Linux) - Open search modal
 - `↑/↓` Arrow keys - Navigate search results
 - `Enter` - Open selected file at the matching line
 - `Escape` - Close search modal
@@ -66,6 +66,35 @@ Fast and powerful file search extension with JetBrains-like functionality. Searc
 ## Extension Settings
 
 This extension doesn't require any configuration - it works out of the box!
+
+## Customizing Keybindings
+
+You can customize the keyboard shortcut to your preference:
+
+### Method 1: Using VS Code UI
+1. Open Command Palette (`Cmd+Shift+P` on macOS, `Ctrl+Shift+P` on Windows/Linux)
+2. Type "Preferences: Open Keyboard Shortcuts" and select it
+3. Search for "EasySearch" or "searchInFiles"
+4. Click the pencil icon next to the command
+5. Press your desired key combination
+6. Press `Enter` to save
+
+### Method 2: Using keybindings.json
+1. Open Command Palette (`Cmd+Shift+P` on macOS, `Ctrl+Shift+P` on Windows/Linux)
+2. Type "Preferences: Open Keyboard Shortcuts (JSON)" and select it
+3. Add your custom keybinding:
+
+```json
+{
+    "key": "your-preferred-shortcut",
+    "command": "easySearch.searchInFiles"
+}
+```
+
+**Example custom keybindings:**
+- `"key": "alt+f"` - Alt+F
+- `"key": "cmd+f cmd+f"` - Double Cmd+F (chord)
+- `"key": "ctrl+alt+s"` - Ctrl+Alt+S
 
 ## Known Issues
 
