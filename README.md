@@ -45,7 +45,7 @@ By default, EasySearch uses `Shift+F` as its keyboard shortcut. However, if you 
 
 4. Save the file and reload VS Code (`Cmd+Shift+P` → "Developer: Reload Window")
 
-Now you can use either the default `Shift+F` or VS Code's native `Cmd+Shift+F` / `Ctrl+Shift+F` shortcut.
+Now you can use default VS Code's native `Cmd+Shift+F` / `Ctrl+Shift+F` shortcut for EasySearch.
 
 ## Features
 
