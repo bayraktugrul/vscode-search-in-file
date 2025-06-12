@@ -50,8 +50,8 @@
     "keybindings": [
       {
         "command": "easySearch.searchInFiles",
-        "key": "ctrl+shift+f",
-        "mac": "cmd+shift+f"
+        "key": "shift+f",
+        "mac": "shift+f"
       }
     ]
   },
